@@ -5,7 +5,6 @@
     "CLAUDE_CODE_FORK_SUBAGENT": "1",
     "SDG_REVIEW_SUMMARY": ".claude/prompts/reviewer-process-summary.md"
   },
-  "model": "claude-opus-4-7",
   "permissions": {
     "allow": [
       "Bash(ls:*)",
