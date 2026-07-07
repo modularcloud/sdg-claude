@@ -1,52 +1,47 @@
 # sdg-claude
 
-A [Spec-Driven Generation](specs/PROCESS.md) (SDG) implementation for [Claude Code](https://claude.com/claude-code).
+A Claude-native implementation of **Spec-Driven Generation (SDG)** — a structured process for building software by maintaining a master specification and letting AI generate everything else: the spec, the test spec, the certifications, the test harness, and the product. Humans answer clarifying questions to remove ambiguity; they do not write code or specs by hand.
 
-SDG is a structured process for building software by maintaining a master specification and using AI to generate code that implements it. Humans answer clarifying questions to remove ambiguity; the specs, tests, and product are all generated and refined automatically.
+This repository is the **template**. Dropped into a project, it makes every Claude Code session in that project run the SDG process automatically — no commands to learn, no CLI. You chat; the process does the rest.
 
-This repo packages the Claude Code primitives — `CLAUDE.md`, agents, prompts, settings, and a narrow reviewer CLI — needed to run that process in a fresh project.
+## How it works
 
-## Bootstrap
+- [`specs/PROCESS.md`](specs/PROCESS.md) — the harness-agnostic process specification (authoritative, immutable).
+- [`specs/CLAUDE-PROCESS.md`](specs/CLAUDE-PROCESS.md) — how the process binds to Claude Code: the main thread is a "dumb" Orchestrator that only steps through phases; a forked **Liaison** subagent owns all Developer communication and `specs/PHILOSOPHY.md`; **Reviewer**, **Driver**, **Engineer**, and **Specialist** run as fresh-context subagents driven by per-phase mission prompts in `.claude/prompts/`.
+- [`CLAUDE.md`](CLAUDE.md) — marks the project as SDG-governed, end to end, all or nothing.
 
-In a new (or existing) project directory:
+Defaults: every agent runs Claude **Fable** (`max` effort for the session/Liaison/Reviewer, `high` elsewhere), and `.claude/settings.json` sets `bypassPermissions` — this is built to run unattended in a sandboxed or cloud environment (Claude Code web, a container, a VM). Adjust `settings.json` if that doesn't describe your machine.
 
-```sh
-npx degit modularcloud/sdg-claude
-```
+## Bootstrap a project
 
-That drops in:
-
-- `CLAUDE.md` — the Lead's routing instructions
-- `.claude/` — agents, prompts, settings, and the `sdg` reviewer CLI
-- `specs/PROCESS.md` — the authoritative SDG process specification
-
-## Requirements
-
-- [`openai` CLI](https://developers.openai.com/api/docs/libraries/openai-cli) on `PATH` (Homebrew: `brew install openai/tools/openai`; or `go install github.com/openai/openai-cli/cmd/openai@latest`)
-- `OPENAI_API_KEY` exported in your shell
-- `git`
-- `gh` (optional, for release / code-review flows)
-
-## Usage
-
-Open Claude Code in the project directory and the Lead picks up the SDG flow. The first interaction will gather a seed describing what you want to build; the rest is automated and only loops you in when clarification is needed.
-
-For details on the process, read [`specs/PROCESS.md`](specs/PROCESS.md). For Claude Code specifics, read [`.claude/prompts/PROCESS.md`](.claude/prompts/PROCESS.md).
-
-## The `sdg` reviewer CLI
-
-`.claude/sdg` is a narrow bash CLI that assembles a fixed prompt bundle and invokes the `openai` CLI to produce a critical review of the spec, test spec, or a patch document.
+Use the **sdg-bootstrap skill** (in [`sdg-bootstrap/`](sdg-bootstrap/)) — share it with Claude and ask it to set up SDG in your project. Or do it manually:
 
 ```sh
-bash .claude/sdg review spec
-bash .claude/sdg review test-spec
-bash .claude/sdg review patch specs/patches/improvements/0001-example.md
-bash .claude/sdg review spec --dry-run    # print the bundle without calling OpenAI
+# in your new project directory
+npx degit modularcloud/sdg-claude sdg-tmp
+rsync -a --exclude README.md --exclude LICENSE --exclude sdg-bootstrap sdg-tmp/ ./ && rm -rf sdg-tmp
 ```
 
-Driver invokes it during Iterative Refinement; you generally won't run it by hand.
+Then make sure the project is a git repository with a GitHub remote and Actions enabled, open Claude Code in it, and describe what you want to build.
 
-Model and effort default to `gpt-5` / `high`; override with `--model` / `--effort` flags or `SDG_REVIEW_MODEL` / `SDG_REVIEW_EFFORT` env vars.
+**Requirements:** Claude Code (web or CLI) with access to Claude Fable; `git` and an authenticated `gh` CLI; a GitHub repository with Actions enabled; a sandboxed/disposable environment (see above).
+
+## Layout
+
+```
+CLAUDE.md                      Orchestrator charter — auto-loads every session
+specs/
+  PROCESS.md                   the SDG process (never modified)
+  CLAUDE-PROCESS.md            Claude Code bindings, protocols, phase runbook
+  PHILOSOPHY.md                Liaison-only memory of Developer principles
+  GOALS.md                     non-negotiable goals (Developer-approved edits only)
+  tmp/  patches/               process working files
+.claude/
+  settings.json                model, effort, permissions defaults
+  agents/                      sdg-reviewer, sdg-driver, sdg-engineer, sdg-specialist
+  prompts/                     Liaison charter + per-phase mission prompts
+sdg-bootstrap/                 the bootstrap skill (not copied into projects)
+```
 
 ## License
 

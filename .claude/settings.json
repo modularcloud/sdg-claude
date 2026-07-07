@@ -1,42 +1,10 @@
 {
-  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "model": "fable",
+  "effortLevel": "xhigh",
   "env": {
-    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
-    "CLAUDE_CODE_FORK_SUBAGENT": "1",
-    "SDG_REVIEW_SUMMARY": ".claude/prompts/reviewer-process-summary.md"
+    "CLAUDE_CODE_EFFORT_LEVEL": "max"
   },
   "permissions": {
-    "allow": [
-      "Bash(ls:*)",
-      "Bash(cat:*)",
-      "Bash(find:*)",
-      "Bash(grep:*)",
-      "Bash(git status:*)",
-      "Bash(git diff:*)",
-      "Bash(git log:*)",
-      "Bash(git show:*)",
-      "Bash(git branch:*)",
-      "Bash(git rev-parse:*)",
-      "Bash(git add:*)",
-      "Bash(git commit:*)",
-      "Bash(git checkout:*)",
-      "Bash(git switch:*)",
-      "Bash(git fetch:*)",
-      "Bash(git pull:*)",
-      "Bash(git push:*)",
-      "Bash(git rebase:*)",
-      "Bash(git merge:*)",
-      "Bash(git mv:*)",
-      "Bash(git restore:*)",
-      "Bash(git remote:*)",
-      "Bash(git config:*)",
-      "Bash(gh:*)",
-      "Bash(openai:*)",
-      "Bash(mkdir:*)",
-      "Bash(rm:*)",
-      "Bash(mv:*)",
-      "Bash(bash .claude/sdg:*)",
-      "Bash(.claude/sdg:*)"
-    ]
+    "defaultMode": "bypassPermissions"
   }
 }
