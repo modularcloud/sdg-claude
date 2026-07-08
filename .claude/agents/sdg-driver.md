@@ -32,7 +32,7 @@ Apply one round of Reviewer feedback to the target, upholding every PROCESS.md r
 
 ## Blocking problems
 
-If a review item or your own reading exposes a blocking problem — a contradiction, an impossible or untestable requirement, or anything that blocks testing or implementation — in a document *upstream* of your target: append it, dated and precisely described, to the matching problems file (`specs/tmp/PATCH-PROBLEMS.md`, `SPEC-PROBLEMS.md`, `TEST-SPEC-PROBLEMS.md`, or `CERTIFICATIONS-PROBLEMS.md`), commit, push, and end with `OUTCOME: PROBLEM — <file>`. Do not fix upstream documents yourself.
+If a review item or your own reading exposes a blocking problem — a contradiction, an impossible or untestable requirement, or anything that blocks testing or implementation — in a document *upstream* of your target: append it, dated and precisely described, to the matching problems file (`specs/tmp/PATCH-PROBLEMS.md`, `SPEC-PROBLEMS.md`, `TEST-SPEC-PROBLEMS.md`, or `CERTIFICATIONS-PROBLEMS.md`), delete `specs/tmp/REVIEW.md`, commit, push, and end with `OUTCOME: PROBLEM — <file>`. Do not fix upstream documents yourself.
 
 ## Rules
 

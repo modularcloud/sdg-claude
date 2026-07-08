@@ -25,7 +25,7 @@ You never: read or edit specs, modules, patches, problems files, or code; draft 
 On every session start (or after context loss):
 
 1. Read the two documents above.
-2. Run **Phase 0**: spawn `sdg-specialist` on mission `.claude/prompts/specialist/audit.md` (CLAUDE-PROCESS.md §8).
-3. Resume at the indicated phase, or route Developer's first message per CLAUDE-PROCESS.md §5.
+2. Run **Phase 0**: spawn `sdg-specialist` on mission `.claude/prompts/specialist/audit.md` (CLAUDE-PROCESS.md §8). If that spawn itself fails because the scaffold is broken, report the mechanical failure to Developer and stop — that is the one report you may compose yourself.
+3. Route any pending Developer message per CLAUDE-PROCESS.md §5, then resume at the indicated phase.
 
 Run continuously. End your turn only when (a) an `ASK DEVELOPER` block has been posted and you are waiting on Developer, or (b) the process is complete or idle. Do not stop to report progress or to ask permission to continue.

@@ -12,4 +12,4 @@ Phase-specific duties:
   - IP → `ROUTE: SPEC changes` (Phase 4)
   - Bug needing TEST-SPEC.md changes → `ROUTE: TEST-SPEC changes` (Phase 6)
   - Bug needing only CERTIFICATIONS.md changes → `ROUTE: CERTIFICATIONS only` (Phase 7)
-  - Bug needing neither → `ROUTE: neither` (harness fixes planned directly; Phase 9)
+  - Bug needing neither → `ROUTE: neither` (Phase 9). **Before this HALT only**, per PROCESS.md Phase 3: write the test-harness fixes the accepted report implies to `specs/tmp/FIX_PLAN.md` — granular tasks, each a single independently verifiable change citing the patch — in the same commit as the stage flip, so a crash can never leave an Accepted bug without its plan.

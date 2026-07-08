@@ -2,7 +2,7 @@
 
 Context: SPEC.md is the product's sole source of truth. Downstream, Phase 6 must derive a complete blackbox test spec from it, and Phase 10 Engineers must implement the product from it alone — judge fitness for those two uses, not just rule compliance. Governing PROCESS.md sections: Concepts, and Core Documents → SPEC.md / modules/ / GOALS.md / IMPLEMENTATION.md.
 
-Target: `specs/SPEC.md` plus every non-`TEST-` module in `specs/modules/`. Bundle (per CLAUDE-PROCESS.md §6): `specs/IMPLEMENTATION.md` (if it exists), `specs/GOALS.md`, the relevant IP (patch flow), `specs/tmp/SPEC-PROBLEMS.md` (if it exists).
+Target: `specs/SPEC.md` plus every module in `specs/modules/` not prefixed `TEST-` or `CERTIFICATIONS-`. Bundle (per CLAUDE-PROCESS.md §6): `specs/IMPLEMENTATION.md` (if it exists), `specs/GOALS.md`, the relevant IP (patch flow), `specs/tmp/SPEC-PROBLEMS.md` (if it exists).
 
 Press hardest on:
 

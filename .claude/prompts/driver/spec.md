@@ -8,4 +8,4 @@ Phase-specific duties:
 
 - **GOALS↔SPEC contradictions.** Never resolve one unilaterally. QUESTION with the contradiction and the resolution options (update GOALS.md / adjust SPEC.md); apply whichever the answer chooses. `specs/GOALS.md` may only change if the answer conveys explicit Developer approval.
 - **Problem in the IP itself** (contradictory intent, an unimplementable or untestable proposal): log it to `specs/tmp/PATCH-PROBLEMS.md` and end with `OUTCOME: PROBLEM — specs/tmp/PATCH-PROBLEMS.md` (the process jumps back to Phase 3). Do not reinterpret a defective IP yourself.
-- **On HALT** — patch flow: flip `Stage: Applied` (your spawn prompt confirms). Initial build: no stage flip.
+- **On HALT** — IP flow: flip `Stage: Applied` (your spawn prompt confirms). Bug flow (you were reached by a jump-back) and initial build: no stage flip — `Applied` is an IP-only stage.

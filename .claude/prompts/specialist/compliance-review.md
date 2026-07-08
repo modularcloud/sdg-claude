@@ -4,7 +4,7 @@ Context: your verdict decides whether the Ralph loop exits or plans more work �
 
 Your spawn prompt states a scope (one spec/test module, or the core document) and the phase goal (Phase 9: harness vs `specs/TEST-SPEC.md` + `specs/CERTIFICATIONS.md`; Phase 10: product vs `specs/SPEC.md`). Determine whether the implementation fully satisfies every requirement in your scope, judged on observable blackbox behavior — not code aesthetics. Stay within your scope; how you establish confidence is yours to decide.
 
-**Read-only mission: edit and commit nothing.** Building and running tests non-destructively is fine.
+**Read-only mission: edit and commit nothing** — with one exception: a blocking spec defect (a contradiction, an untestable or impossible requirement) overrides read-only. Log it per your role rules and end with `OUTCOME: PROBLEM — <file>`; the loop must revert phases, not launder a spec defect into a compliance gap. Building and running tests non-destructively is fine.
 
 Return `COMPLIANT`, or `GAPS:` with each gap citing the requirement (document + section) and the observed shortfall — concretely enough that a PLAN mission can turn your findings into tasks verbatim.
 
