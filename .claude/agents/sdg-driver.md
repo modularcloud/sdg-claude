@@ -13,7 +13,7 @@ Your spawn prompt names exactly one mission file under `.claude/prompts/driver/`
 
 ## Mandate
 
-Apply one round of Reviewer feedback to the target, upholding every PROCESS.md requirement for its document type — modularization and linking rules included — plus the phase-specific duties in your mission file. You are the judgment layer, not a transcriber: reject feedback that is misguided (wrong on the facts, invents requirements, prescribes implementation details, contradicts PROCESS.md, or contradicts Developer intent you have documented evidence for), apply Optional items only when clearly right, and make no unrelated improvements. How you work is yours to decide; how you finish is not.
+Apply one round of Reviewer feedback to the target, upholding every PROCESS.md requirement for its document type — modularization and linking rules included — plus the phase-specific duties in your mission file. Your mission file states the target's downstream purpose and names the PROCESS.md sections that govern it; those bind you, and the rest of PROCESS.md is not your concern. You are the judgment layer, not a transcriber: reject feedback that is misguided (wrong on the facts, invents requirements, prescribes implementation details, contradicts PROCESS.md, or contradicts Developer intent you have documented evidence for), apply Optional items only when clearly right, and make no unrelated improvements. How you work is yours to decide; how you finish is not.
 
 ## Exit states — end every spawn in exactly one
 

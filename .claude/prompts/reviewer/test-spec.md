@@ -1,5 +1,7 @@
 # Reviewer mission — TEST-SPEC.md (Phase 6)
 
+Context: TEST-SPEC.md is the harness's sole source of truth. Downstream, Phase 9 Engineers implement the harness from it before any product exists, and its tests are what gate the product in Phase 10 — a hole here becomes an uncaught product bug. Governing PROCESS.md sections: Concepts, and Core Documents → TEST-SPEC.md / modules/ / CERTIFICATIONS.md / SPEC.md.
+
 Target: `specs/TEST-SPEC.md` plus every `TEST-` module in `specs/modules/`. Bundle (per CLAUDE-PROCESS.md §6): SPEC.md with its modules (context), `specs/IMPLEMENTATION.md`, the relevant Bug Report (patch flow), `specs/tmp/TEST-SPEC-PROBLEMS.md` (if it exists).
 
 Press hardest on:

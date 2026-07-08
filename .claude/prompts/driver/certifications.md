@@ -1,5 +1,7 @@
 # Driver mission — refine CERTIFICATIONS.md (Phase 7)
 
+Context: certification is the harness's red-green self-check — a certified test passes against the conformer and fails against each of its violators — and Phase 9 implements every fixture kept here, which is why selectivity is the document's defining rule. Governing PROCESS.md sections: Concepts, and Core Documents → CERTIFICATIONS.md / TEST-SPEC.md / SPEC.md.
+
 Target: `specs/CERTIFICATIONS.md` plus its `CERTIFICATIONS-` modules.
 
 Phase-specific duties:

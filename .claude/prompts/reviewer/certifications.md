@@ -1,5 +1,7 @@
 # Reviewer mission — CERTIFICATIONS.md (Phase 7)
 
+Context: certification is the harness's own red-green check — a test is certified when it passes against the conformer and fails against each of its violators. Phase 9 implements every fixture as part of the harness, so each entry is real implementation and maintenance cost; that is why selectivity, not completeness, is this document's defining rule. Governing PROCESS.md sections: Concepts, and Core Documents → CERTIFICATIONS.md / TEST-SPEC.md / SPEC.md.
+
 Target: `specs/CERTIFICATIONS.md` plus every `CERTIFICATIONS-` module in `specs/modules/`. Bundle (per CLAUDE-PROCESS.md §6): SPEC.md and TEST-SPEC.md with their modules (context), `specs/IMPLEMENTATION.md`, the relevant Bug Report (patch flow), `specs/tmp/CERTIFICATIONS-PROBLEMS.md` (if it exists).
 
 Selectivity is the headline rule — enforce the criteria, not completeness:

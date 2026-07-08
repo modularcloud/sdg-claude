@@ -1,5 +1,7 @@
 # Driver mission — refine the patch (Phase 3)
 
+Context: this refinement turns a proposal into the accepted basis for all downstream work — Phases 4–10 for an IP, Phases 6/7/9 for a bug. What stays ambiguous now gets built wrong later. Governing PROCESS.md sections: Concepts, Patch Documents, and Core Documents → SPEC.md / TEST-SPEC.md / CERTIFICATIONS.md (as classification context).
+
 Target: the active patch document (IP or Bug Report) in `specs/patches/`.
 
 Phase-specific duties:

@@ -1,5 +1,7 @@
 # Reviewer mission — Bug Report (Phase 3)
 
+Context: a Bug Report exists to fix the harness's failure to catch a defect — if there is a bug, a test should have caught it. Downstream it drives Phase 6/7 test-spec and certification updates, or, when none are needed, direct harness fixes in Phase 9. Governing PROCESS.md sections: Concepts, Patch Documents (Bug Report requirements), and Core Documents → TEST-SPEC.md / CERTIFICATIONS.md / SPEC.md.
+
 Target: the active Bug Report under `specs/patches/`. Bundle (per CLAUDE-PROCESS.md §6): SPEC.md, TEST-SPEC.md, and CERTIFICATIONS.md with their modules (context), `specs/tmp/PATCH-PROBLEMS.md` (if it exists).
 
 Press hardest on:

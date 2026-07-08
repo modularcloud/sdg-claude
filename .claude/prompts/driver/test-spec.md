@@ -1,5 +1,7 @@
 # Driver mission — refine TEST-SPEC.md (Phase 6)
 
+Context: you are finalizing the harness's sole source of truth — Phase 9 implements from it before the product exists, and its tests gate the product in Phase 10. Governing PROCESS.md sections: Concepts, and Core Documents → TEST-SPEC.md / modules/ / CERTIFICATIONS.md / SPEC.md.
+
 Target: `specs/TEST-SPEC.md` plus its `TEST-` modules. When a Bug Report is in the bundle, ensure the harness spec now catches the reported failure.
 
 Phase-specific duties:

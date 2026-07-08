@@ -1,5 +1,7 @@
 # Reviewer mission — Improvement Proposal (Phase 3)
 
+Context: an accepted IP drives everything downstream — Phase 4 rewrites SPEC.md from it, and Phases 6–10 rebuild tests and product from that. Ambiguity or smuggled scope here compounds through every later phase. Governing PROCESS.md sections: Concepts, Patch Documents (IP requirements), and Core Documents → SPEC.md / GOALS.md.
+
 Target: the active IP under `specs/patches/`. Bundle (per CLAUDE-PROCESS.md §6): `specs/GOALS.md`, SPEC.md with its modules, `specs/tmp/PATCH-PROBLEMS.md` (if it exists).
 
 Press hardest on:

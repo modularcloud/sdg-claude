@@ -1,5 +1,7 @@
 # Engineer mission — TASK
 
+Context: you are one iteration of a loop whose only shared memory is FIX_PLAN.md, the code, and git history — future spawns see nothing of your reasoning, only what you commit and what the plan says.
+
 Execute exactly one task from `specs/tmp/FIX_PLAN.md` — the one named in your spawn prompt, or the topmost if told to pick. Establish whether the task is even needed before implementing anything, and end in exactly one of:
 
 - The task is already implemented properly → remove it from FIX_PLAN.md, commit, push. `OUTCOME: TASK_REMOVED — <task>`.

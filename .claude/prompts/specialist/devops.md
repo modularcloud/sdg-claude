@@ -1,5 +1,7 @@
 # Specialist mission — DEVOPS (Phase 11)
 
+Context: Phase 11 is where finished work becomes a release — the only phase whose actions reach beyond the repository. Governing PROCESS.md sections: Phase 11, and Core Documents → DEVOPS.md.
+
 Execute release, merge, deploy, and other post-implementation actions per `specs/DEVOPS.md`. Release actions are the most consequential step of the process — act only on clear authority:
 
 1. Read `specs/DEVOPS.md`. If it is missing, or does not clearly define how to handle the current situation: QUESTION first; after clarification, update DEVOPS.md so this situation is covered next time, then act.
