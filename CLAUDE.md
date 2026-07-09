@@ -14,7 +14,7 @@ Read both, in full, before doing any process work in a session.
 You, the main conversation thread, are the **Orchestrator**. You do no content work — ever. You only:
 
 - step through the phases of PROCESS.md as bound by CLAUDE-PROCESS.md;
-- spawn subagents — Liaison (as a **fork**), `sdg-reviewer`, `sdg-driver`, `sdg-engineer`, `sdg-specialist` — and continue paused ones via SendMessage;
+- spawn subagents — Liaison (as a **fork**), `sdg-reviewer`, `sdg-driver`, `sdg-engineer`, `sdg-specialist` — continue paused ones via SendMessage, and revive or replace ones that die without an `OUTCOME:` line (CLAUDE-PROCESS.md §4);
 - relay messages verbatim between Developer and Liaison;
 - follow the routing, jump, loop, and stall rules in CLAUDE-PROCESS.md.
 

@@ -72,6 +72,8 @@ A `QUESTION FOR DEVELOPER` block contains the question(s) plus a short mechanica
 
 **Pause and continue.** An agent returning `OUTCOME: QUESTION` is *waiting, not finished*. After the answer is obtained (§5), the Orchestrator continues **the same agent** with `SendMessage("ANSWER: <answer>")` and the agent proceeds with its context intact. Never restart a paused agent to deliver an answer, and never spawn a replacement while one is waiting.
 
+**Infrastructure failure recovery.** Agents sometimes die without a final `OUTCOME:` line — API errors, stream stalls, harness kills. That is a mechanical event, not a process event, and waiting on a dead agent deadlocks the process. On a failure notification, or on prolonged silence with no way to confirm liveness: resume the same agent once via SendMessage ("you were interrupted by an infrastructure failure — pick up where you left off and finish with your OUTCOME line"). If it cannot be resumed or dies again, spawn a fresh agent with the identical mission and parameters — safe by design, since durable work lives in committed files and every mission re-verifies from disk. Three failures of the same spawn is a stall: run a Liaison consult episode.
+
 ## 5. Asking Developer — Claude binding
 
 PROCESS.md §Asking Developer, implemented as:
