@@ -110,9 +110,9 @@ loop:
   if i > 12: run a Liaison episode ("refinement of <target> is not converging after 12
              iterations: <evidence>. How should we proceed?") and follow the answer.
   1. Spawn sdg-reviewer with: its mission file (table below), target, phase, reason, and
-     the bundle paths. Reviewer writes specs/tmp/REVIEW.md (overwriting any prior one)
-     and returns severity counts — the Orchestrator's convergence evidence for the
-     escalation valve.
+     the bundle paths. Reviewer writes specs/tmp/REVIEW.md (overwriting any prior one),
+     commits and pushes it, and returns severity counts — the Orchestrator's convergence
+     evidence for the escalation valve.
   2. Spawn a fresh sdg-driver with: its mission file (table below), target, phase, bundle
      paths, and any patch-stage flip it must perform on HALT (per §8).
   3. On the Driver's outcome:
@@ -222,7 +222,7 @@ Phase 0 runs at the start of **every** session. Paths: core docs in `specs/`, te
 ## 9. Git, GitHub, and CI conventions
 
 - **Branches:** `sdg/initial-build` for the initial build; `patch/<short-title>` for patches (per PROCESS.md). A PR is opened at the first push and anchors CI and the Code Review Sub-Flow.
-- **Commits:** `sdg(phase-N): <imperative summary>` (Liaison uses `sdg(liaison): …`). Agents that changed durable files commit only what their mission touched and always push before finishing; Reviewer's `specs/tmp/REVIEW.md` is transient and never committed.
+- **Commits:** `sdg(phase-N): <imperative summary>` (Liaison uses `sdg(liaison): …`). Every agent commits only what its mission touched and always pushes before finishing — temp documents included: all `specs/tmp/` state (REVIEW.md, FIX_PLAN.md, problems files) lives in git, so any session can die anywhere and resume without loss.
 - **CI:** GitHub Actions, wired in Phase 8; status read through whatever GitHub access the environment provides (`gh` locally, the built-in integration on web). Green CI is part of spec compliance (PROCESS.md Ralph Loop note 2). Local-only tests are marked per TEST-SPEC.md and excluded from CI — never silently skipped.
 - **Merging** happens only in Phase 11, per DEVOPS.md.
 
@@ -234,7 +234,7 @@ Phase 0 runs at the start of **every** session. Paths: core docs in `specs/`, te
 
 1. An Orchestrator role exists: the main thread steps the process mechanically and holds no content role.
 2. Liaison runs as a forked subagent (for chat-history access) and cannot address Developer directly; the Orchestrator relays `ASK DEVELOPER` / `REPLY` blocks verbatim, one fresh fork per episode.
-3. Reviewer writes `specs/tmp/REVIEW.md` itself rather than its response being saved by another party.
+3. Reviewer writes `specs/tmp/REVIEW.md` itself rather than its response being saved by another party — and commits and pushes it, so every temp document is tracked and refinement state survives ephemeral sessions.
 4. Paused agents (`OUTCOME: QUESTION`) are continued in-thread via SendMessage — never re-spawned mid-iteration.
 5. Engineer-iteration steps requiring subagents are hoisted: compliance panels, verify runs, and plan writing are separate fresh agents sequenced by the Orchestrator; the per-task Engineer researches inline within its own context.
 6. Driver deletes `specs/tmp/REVIEW.md` before finishing every iteration, including on HALT.

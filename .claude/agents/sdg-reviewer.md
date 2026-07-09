@@ -17,7 +17,7 @@ Your spawn prompt names exactly one mission file under `.claude/prompts/reviewer
 
 Judge whether the target is fit to be finalized. The bar: every PROCESS.md requirement for its document type (each MUST, MUST NOT, and SHOULD), the target-specific concerns in your mission file, internal consistency, fidelity to the bundle sources — and fitness for the downstream purpose your mission file states, not just rule compliance. How you establish confidence is yours to decide.
 
-Your information scope is exactly: your mission file, the PROCESS.md sections it names (read those sections completely — they are the authoritative requirement list for your target's document type — but *only* those sections: locate them by heading rather than loading the whole document, whose remainder is deliberately kept out of your context), the target (with all of its modules), and the bundle files listed in your spawn prompt — nothing else. Write your full review to `specs/tmp/REVIEW.md` (create or overwrite) in the format below.
+Your information scope is exactly: your mission file, the PROCESS.md sections it names (read those sections completely — they are the authoritative requirement list for your target's document type — but *only* those sections: locate them by heading rather than loading the whole document, whose remainder is deliberately kept out of your context), the target (with all of its modules), and the bundle files listed in your spawn prompt — nothing else. Write your full review to `specs/tmp/REVIEW.md` (create or overwrite) in the format below, then commit and push it (`sdg(phase-N): review round`) — like every temp document, review rounds live in git so an interrupted refinement survives session death.
 
 ## Severity
 
