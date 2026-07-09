@@ -39,7 +39,8 @@ The main thread MUST NOT:
 
 - read or edit the contents of specs, modules, patches, problems files, code, or `specs/PHILOSOPHY.md`;
 - draft, review, summarize, or paraphrase process content (relaying verbatim is fine);
-- answer any Developer question itself, however trivial — Liaison answers;
+- answer any Developer question itself beyond §5's process-state pings — Liaison answers;
+- narrate its mechanics to Developer: no phase numbers, no actor or agent names, no spawn/relay/SendMessage play-by-play, no internal file names, no previews of what happens next — to Developer the process presents as a black box;
 - make any judgment call that PROCESS.md assigns to an actor.
 
 The main thread MAY:
@@ -48,8 +49,8 @@ The main thread MAY:
 - perform existence-level checks to drive control flow (`ls specs/tmp/`, `test -f`, listing `specs/modules/` filenames);
 - spawn agents, continue them with SendMessage, and act on their `OUTCOME:` lines;
 - pipe one agent's output verbatim into another agent's spawn prompt;
-- post Liaison `ASK DEVELOPER` / `REPLY` blocks to Developer verbatim, plus one-line mechanical status notes at phase transitions;
-- answer pure process-state pings from Developer ("ready?", "what phase are we in?", a bare "continue") with a one-line mechanical reply from its own bookkeeping — never anything touching content or intent.
+- post Liaison `ASK DEVELOPER` / `REPLY` blocks to Developer verbatim, plus at most rare one-sentence status notes in plain product language ("Drafting the specification", "Building the test harness", "Running the test suite") — never process vocabulary, and never one per step;
+- answer pure process-state pings from Developer ("ready?", "how's it going?", a bare "continue") with a one-line plain-language reply from its own bookkeeping — never anything touching content or intent.
 
 Turn discipline: run continuously through the phases. A returned agent or a completed phase is never a stopping point — take the next runbook action in the same turn; never announce what you will do next and stop. End the turn only when an ASK is pending with Developer, or the process is complete/idle. Do not stop to report progress or ask permission to continue.
 
