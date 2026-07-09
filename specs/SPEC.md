@@ -85,11 +85,11 @@ xspec source files import nothing from xspec; `<S>`, `<Spec>`, and `text` are pr
 import BASE from "./BASE.xspec"
 ```
 
-Every import MUST resolve to an xspec source file belonging to a configured spec group (7.1); any other import is invalid (14.15). Import cycles among spec source files are invalid, even when no requirement-level dependency cycle exists.
+An import specifier MUST be a relative path beginning with `./` or `../` and ending in `.xspec`, resolved against the importing file's directory; `DIR/NAME.xspec` designates the source file `DIR/NAME.mdx`. The designated file MUST be a discovered source file of a configured spec group (7.1); any other specifier or target is invalid (14.15). The only permitted import form is a single default binding, as above; named, namespace, and side-effect-only imports are invalid (14.15). Multiple imports MAY bind the same module; an import whose binding is never used is valid and records no edges. Import cycles among spec source files are invalid, even when no requirement-level dependency cycle exists.
 
 ### 2.2 Dependency prop
 
-The `d` prop declares that one requirement depends on another. It accepts a single reference or an array, where each reference is either a static property chain rooted at an imported spec module (external form) or a string literal naming an ID in the same file (local form). The two forms MAY be mixed in one array. An external reference MAY also be the imported module itself, with no property segments, targeting that file's root node. Duplicate references to one target in a single `d` array collapse to a single edge.
+The `d` prop declares that one requirement depends on another. It accepts a single reference or an array, where each reference is either a static property chain rooted at an imported spec module (external form) or a string literal naming an ID in the same file (local form). The two forms MAY be mixed in one array. An external reference MAY also be the imported module itself, with no property segments, targeting that file's root node. Duplicate references to one target in a single `d` array collapse to a single edge. An empty array (`d={[]}`) declares no dependencies and is equivalent to omitting the prop.
 
 ```mdx
 <S id="derived" d={[BASE.auth.login, "local.requirement"]}>
@@ -138,11 +138,11 @@ Repeated failed logins lock the account.
 </S>
 ```
 
-`tags` is a space-separated list. Duplicate tags collapse. Tags are recorded in the graph, do not render into Markdown output, are not inherited by descendants, and are usable in coverage target filters (7.4) and policy selectors (7.5).
+`tags` is a whitespace-separated list: tags are split on runs of whitespace, and leading and trailing whitespace is ignored. Duplicate tags collapse. A `tags` value that yields no tags (empty or whitespace-only) is equivalent to omitting the prop. Tags are recorded in the graph, do not render into Markdown output, are not inherited by descendants, and are usable in coverage target filters (7.4) and policy selectors (7.5).
 
 ### 2.7 Permitted constructs
 
-Beyond standard Markdown content, an xspec source file may contain only spec module imports (2.1), `<S>`/`<Spec>` sections, and `{text(...)}` embeddings. Any other JSX element, any other expression container, and any export statement are invalid (14.16). The props defined on `<S>`/`<Spec>` are `id`, `d`, `coverage`, and `tags`; unknown props, and `coverage` values other than `required` and `none`, are invalid (14.17).
+Beyond standard Markdown content, an xspec source file may contain only spec module imports (2.1), `<S>`/`<Spec>` sections, `{text(...)}` embeddings, and MDX comments (`{/* … */}`). Any other JSX element, any other expression container, and any export statement are invalid (14.16). Comments are pure annotations: they do not enter own text or any hash, and Markdown output removes them (3). The props defined on `<S>`/`<Spec>` are `id`, `d`, `coverage`, and `tags`; unknown props, and `coverage` values other than `required` and `none`, are invalid (14.17).
 
 ## 3. Markdown Compilation
 
@@ -150,10 +150,11 @@ When enabled (7.3), each source file compiles to a pure Markdown file. The outpu
 
 * removes spec module imports
 * removes `<S>` / `<Spec>` tags together with their props (`id`, `d`, `coverage`, `tags`)
+* removes MDX comments
 * replaces each `text(...)` expression with the target's compiled subtree text, fully expanded
 * preserves all other Markdown content and author whitespace
 
-`<S>` and `<Spec>` are transparent annotations: they divide the source into requirement nodes but are not rendered as visible markup. Authors are responsible for normal Markdown spacing; for example, `<S id="a">Example:</S><S id="b">1. A</S>` strips to `Example:1. A`.
+Removal is exact textual deletion of the construct's own characters, in place. A line that contained non-whitespace in the source but is left empty or whitespace-only purely by removals (or by a `text(...)` replacement whose expansion is empty) is dropped together with its line terminator; every other line keeps its remaining content and terminator. `<S>` and `<Spec>` are transparent annotations: they divide the source into requirement nodes but are not rendered as visible markup. Authors are responsible for normal Markdown spacing around in-line tags; for example, `<S id="a">Example:</S><S id="b">1. A</S>` strips to `Example:1. A`.
 
 ## 4. Generated TypeScript Modules
 
@@ -163,6 +164,8 @@ For each source file `NAME.mdx`, xspec generates a TypeScript module imported as
 import SPEC, { text } from "./NAME.xspec"
 ```
 
+In a TypeScript file, an import is a spec module import exactly when its specifier ends in `.xspec`; the specifier follows the same form and resolution as 2.1 and MUST designate a discovered spec source (14.15). The permitted bindings from a spec module are the default export and the named `text` export, each optionally aliased; any other binding is invalid (14.15).
+
 The generated module MUST begin with a header identifying it as generated by xspec from its source file. Manual edits to generated files are invalid; staleness is detected by `xspec check` (14.10).
 
 ### 4.1 Node skeleton
@@ -171,7 +174,7 @@ The default export is the root node. Each node exposes its child sections as rea
 
 ### 4.2 Documentation and navigation
 
-Every generated node MUST carry a documentation comment containing the node's own text, truncated at a deterministic limit, so editors show hover documentation. The generated module MUST include declaration maps such that go-to-definition on a node reference resolves to the corresponding `<S>` section in the source `.mdx` file.
+Every generated node MUST carry a documentation comment containing the node's own text, truncated at a deterministic limit, so editors show hover documentation. Go-to-definition on a node reference MUST resolve to the corresponding `<S>` section in the source `.mdx` file.
 
 ### 4.3 text
 
@@ -194,7 +197,7 @@ function printHello() {
 }
 ```
 
-A marker records a `references` edge from the enclosing code location to the node. At runtime, a marker is a harmless property read; markers MUST be valid with no additional tooling installed. A bare reference to the root node records a `references` edge to the root node only; because roots are never coverage targets, a root marker grants no coverage, but it makes the code location impacted by any change in the document (9.3).
+A marker records a `references` edge from the enclosing code location to the node. At runtime, a marker is a harmless property read; markers MUST be valid with no additional tooling installed. A bare reference to the root node records a `references` edge to the root node only; because roots are never coverage targets, a root marker grants no coverage, but it makes the code location impacted by any change in the document (9.2).
 
 A marker and the argument to `text(...)` MUST each be a property chain rooted directly at a spec module import binding; the static argument rule (2.4) applies in TypeScript equally (14.8). Spec module bindings and nodes support no other value-level use: aliasing, destructuring, re-export, storage in variables or data structures, or passing to any function other than the module's own `text` export is invalid (14.18). Type-level references are unrestricted and record no edges.
 
@@ -202,7 +205,7 @@ A marker and the argument to `text(...)` MUST each be a property chain rooted di
 
 A code location is either a whole file, identified by its workspace-relative path, or a named code unit within a file, identified as `path#unit`, where `unit` is the dot-joined chain of enclosing named-unit names, outermost first (`src/auth.ts#LoginService.validate`).
 
-A named code unit is a construct that statically binds a plain identifier name to executable code: a function declaration; a class declaration; a class member with a non-computed identifier name (a method, getter, setter, or a property whose initializer is a function or class expression); a variable declaration with a plain identifier name whose initializer is a function or class expression; a namespace declaration; or a default export, whose name is `default` when the exported construct is anonymous. Constructs that do not statically bind a plain identifier — anonymous or immediately invoked functions, computed or string-literal member names, destructuring bindings — are not named code units.
+A named code unit is a construct that statically binds a plain identifier name to executable code: a function declaration; a class declaration; a class member with a non-computed identifier name (a method, getter, setter, or a property whose initializer is a function expression, an arrow function, or a class expression); a variable declaration with a plain identifier name whose initializer is a function expression, an arrow function, or a class expression; a namespace declaration; or a default export, whose name is `default` when the exported construct is anonymous. Constructs that do not statically bind a plain identifier — anonymous or immediately invoked functions, computed or string-literal member names, destructuring bindings — are not named code units.
 
 xspec attributes a TypeScript reference to the innermost enclosing named code unit, and to the file when none encloses it. When the same `unit` chain occurs more than once in a file (a getter/setter pair, same-named declarations in sibling scopes), occurrences after the first are disambiguated with a 1-based document-order suffix: `path#unit@2` identifies the second occurrence.
 
@@ -238,9 +241,9 @@ Each requirement node has four hashes, all deterministic for identical input:
 * ownHash: hash of the node's own text, with each embedded `text(...)` expression hashed as its target's canonical identity rather than its expanded text
 * subtreeHash: hash of (ownHash, child subtreeHashes in document order)
 * effectiveHash: hash of (ownHash, child effectiveHashes in document order, sorted effectiveHashes of the node's dependency-edge targets)
-* metadataHash: hash of (the node's direct dependency target set as sorted canonical identities, its coverage attribute, its sorted tags)
+* metadataHash: hash of (the node's `d`-declared (`depends`) target set as sorted canonical identities, its coverage attribute, its sorted tags); embedded `text(...)` references are part of own text and surface through ownHash, not metadataHash
 
-Properties: subtreeHash changes if and only if an edit occurred somewhere in the node's subtree text; effectiveHash additionally changes when any transitive dependency target changes; metadataHash changes if and only if the node's own dependency declarations, coverage attribute, or tags change. Editing an embedded target therefore surfaces at the embedding node as `upstream-changed`, not `changed`, while `text(...)` output remains fully expanded.
+Properties: subtreeHash changes if and only if the node's subtree changed as written in the source — a node in it was added, removed, or reordered, or a node's own text was edited (retargeting an embedded reference included); editing an embedded target's text changes the target's hashes, not the embedder's ownHash or subtreeHash. effectiveHash additionally changes when, for the node or any node in its subtree, a dependency edge is added or removed or a dependency-edge target's effectiveHash changes. metadataHash changes if and only if the node's `d` declarations, coverage attribute, or tags change. Editing an embedded target therefore surfaces at the embedding node as `upstream-changed`, not `changed`, while `text(...)` output remains fully expanded.
 
 ### 5.6 Change categories
 
@@ -249,15 +252,15 @@ Relative to a baseline, each requirement node receives zero or more categories:
 * changed: the node was added or deleted, or its ownHash changed
 * metadata-changed: the node's metadataHash changed
 * descendant-changed: the node's subtreeHash changed because of a change in a descendant
-* upstream-changed: the node's effectiveHash changed because a dependency-edge target of the node, or of a node in its subtree, changed
+* upstream-changed: the node's effectiveHash changed because the effectiveHash of a dependency-edge target — of the node or of a node in its subtree — changed, or because a node in its subtree other than the node itself had dependency edges added or removed
 
-Categories are independent flags; a node MAY carry several. Every category MUST be attributed to its originating changed nodes. For a single edit to a leaf: the leaf is `changed`; every ancestor is `descendant-changed` attributed to the leaf; sibling subtrees receive no category; dependents of any node on that path are `upstream-changed`, as are those dependents' ancestors.
+Categories are independent flags; a node MAY carry several. The originating nodes of a change are the nodes where edits occurred — those carrying `changed` or `metadata-changed`; every category MUST be attributed to its originating nodes. For a single edit to a leaf's text: the leaf is `changed`; every ancestor is `descendant-changed` attributed to the leaf; sibling subtrees receive no category; dependents of any node on that path are `upstream-changed`, as are those dependents' ancestors — all attributed to the leaf. For an edit that only adds or removes `d` targets on a node D: D is `metadata-changed`, no node is `changed` or `descendant-changed`, and every other node whose effectiveHash changed — D's ancestors, dependents, dependents' ancestors, and so on transitively — is `upstream-changed` attributed to D. A metadata edit touching only `coverage` or `tags` changes no effectiveHash and propagates no category.
 
 ## 6. Identity Continuity
 
 ### 6.1 The journal
 
-xspec maintains a journal at `.xspec/journal`: a plain-text, append-only file with one entry per line, where each entry is a self-contained record of a rename or move operation and the identity mapping it produced. The journal is written only by `xspec rename` and `xspec move`. It is a durable record, not derived state (13.4): it cannot be regenerated from source and MUST never be modified or deleted by other commands.
+xspec maintains a journal at `.xspec/journal`: a plain-text, append-only file with one entry per line, where each entry is a self-contained record of a rename or move operation and the identity mapping it produced. The journal is written only by `xspec rename` and `xspec move`. It is a durable record, not derived state (13.4): it cannot be regenerated from source and MUST never be modified or deleted by other commands. Entries are byte-deterministic for a given operation and workspace state; entry content is otherwise opaque — the journal's observable contract is its line-oriented, append-only form and its effect on canonical identities, baseline resolution, and validation (5.4, 6.3, 14.13).
 
 ### 6.2 Identity guarantee
 
@@ -265,7 +268,7 @@ A pure rename or move — one that changes only identities and reference spellin
 
 ### 6.3 Baseline resolution
 
-When a command takes a baseline git ref, the baseline graph is reconstructed from the workspace content at that ref. The journal entries present in the current journal but absent from the journal content at the baseline ref are applied, in file order, to map baseline identities to current identities; chained mappings compose. Git history itself provides the ordering; journal entries contain no timestamps. Baseline hashes are computed with the journal content at the baseline ref; because the journal is append-only, canonical identities — and therefore hashes — agree between baseline and current for every node changed only by journaled renames or moves. If replay produces an ambiguous or unresolvable mapping, if the journal at the baseline ref is not a prefix of the current journal (the append-only invariant was violated), or if the baseline content cannot be parsed and validated as a workspace, the command MUST fail with an actionable error naming the offending entries or files; a baseline that cannot be read or reconstructed is a usage error (12.0).
+When a command takes a baseline git ref, the baseline graph is reconstructed from the workspace content at that ref — sources and configuration alike, so group membership reflects the configuration as it stood at that ref. The journal entries present in the current journal but absent from the journal content at the baseline ref are applied, in file order, to map baseline identities to current identities; chained mappings compose. Git history itself provides the ordering; journal entries contain no timestamps. Baseline hashes are computed with the journal content at the baseline ref; because the journal is append-only, canonical identities — and therefore hashes — agree between baseline and current for every node changed only by journaled renames or moves. If replay produces an ambiguous or unresolvable mapping, if the journal at the baseline ref is not a prefix of the current journal (the append-only invariant was violated), or if the baseline content cannot be parsed and validated as a workspace, the command MUST fail with an actionable error naming the offending entries or files; a baseline that cannot be read or reconstructed is a usage error (12.0).
 
 ### 6.4 Rename
 
@@ -273,7 +276,7 @@ When a command takes a baseline git ref, the baseline graph is reconstructed fro
 xspec rename <file> <old-id> <new-id>
 ```
 
-Renames a requirement ID, rewrites descendant IDs by prefix replacement, rewrites every reference to the affected identities across all configured spec and code sources (`id` attributes, `d` references, `text(...)` references, TypeScript markers), and appends the mapping to the journal. Validation MUST confirm: the old ID exists; the new ID is valid; the new ID collides with no existing ID; structural parent rules remain satisfied; all rewritten references resolve.
+Renames a requirement ID, rewrites descendant IDs by prefix replacement, rewrites every reference to the affected identities across all configured spec and code sources (`id` attributes, `d` references, `text(...)` references, TypeScript markers), and appends the mapping to the journal. Validation MUST confirm: the new ID is valid; it collides with no existing ID; structural parent rules remain satisfied; all rewritten references resolve. A `<file>` or old ID that does not exist is a usage error (12.0); every other validation failure refuses the rename (exit 1).
 
 ### 6.5 Move
 
@@ -284,7 +287,7 @@ xspec move <file>#<id> <target-file>#<new-id>
 
 The first form relocates an entire source file; IDs are unchanged and every node's identity changes only in its file part. Relocation also rewrites the moved file's own import specifiers, and the paths by which other files import the moved file's generated module, so all references continue to resolve. The second form extracts a section subtree: the section and its descendants are removed from the origin, inserted as the last child of the target parent (or at the end of the file for a top-level `new-id`), and re-identified by prefix replacement of `<id>` with `<new-id>`. The target file is created if absent. In both forms, all references across the workspace are rewritten to resolve to the new identities, converting between local and imported forms and adding or removing spec module imports as needed, and the full mapping is appended to the journal.
 
-Move validation mirrors rename validation and additionally MUST refuse any move that would create an import cycle among spec source files or a dependency cycle, and any move whose destination file path (including a target file to be created) is matched by no configured spec group — a move never takes a node out of the workspace.
+Move validation mirrors rename validation, including the usage-error classification of a nonexistent origin file or ID (12.0), and additionally MUST refuse: a move that would create an import cycle among spec source files or a dependency cycle; a file-form move whose destination file already exists; and a move whose destination file path (including a target file to be created) is matched by no configured spec group — a move never takes a node out of the workspace.
 
 ### 6.6 Manual restructuring
 
@@ -327,11 +330,11 @@ export default defineConfig({
 })
 ```
 
-Every command locates the configuration by upward search for `xspec.config.ts` from the working directory, or uses the path given by the global `--config <path>` option. All configured paths and globs resolve relative to the configuration file's directory, which is the workspace root. Discovery of source files is controlled exclusively by configuration; derived files are never discovered as sources (13.4); imports resolve references between files but never add files to the workspace (2.1).
+Every command locates the configuration by upward search for `xspec.config.ts` from the working directory, or uses the path given by the global `--config <path>` option. `specs` is required; `code`, `markdown`, `coverage`, and `policy` are optional — omitting one means no code groups, no Markdown emission, no coverage profiles, or no policy rules, respectively. All configured paths and globs resolve relative to the configuration file's directory, which is the workspace root. Globs support exactly `*` (any possibly empty run of characters within one path segment), `?` (one character within a segment), and `**` (any number of whole segments, including none); matching is case-sensitive; a path segment beginning with `.` is matched only by a pattern segment written with a leading `.`; a pattern that resolves outside the workspace root is a configuration error (14.14). Discovery of source files is controlled exclusively by configuration; derived files are never discovered as sources (13.4); imports resolve references between files but never add files to the workspace (2.1).
 
 ### 7.1 `specs`
 
-Named groups of xspec source files, each a list of globs. A file MAY belong to multiple groups.
+Named groups of xspec source files, each a list of globs. A file MAY belong to multiple groups. Every matched file MUST have the `.mdx` extension; a match with any other name is invalid (14.19).
 
 ### 7.2 `code`
 
@@ -339,28 +342,28 @@ Named groups of TypeScript source files, each a list of globs. Code groups serve
 
 ### 7.3 `markdown`
 
-`markdown.emit` (boolean) controls whether pure Markdown files are emitted. `markdown.outDir` (optional path) redirects emitted files into a directory, preserving workspace-relative paths; the default emits next to each source file.
+The `markdown` key is optional; when it is absent, no Markdown is emitted. When present, `markdown.emit` (boolean, required) controls whether pure Markdown files are emitted, and `markdown.outDir` (optional path) redirects emitted files into a directory, preserving workspace-relative paths; the default emits next to each source file.
 
 ### 7.4 `coverage`
 
 Named coverage profiles. Each profile has:
 
-* `name`: unique profile name
-* `target`: spec group whose requirements must be covered
+* `name` (required): unique profile name
+* `target` (required): spec group whose requirements must be covered
 * `targetTags`: optional list of tags; when present, the target set is restricted to nodes carrying at least one listed tag
 * `targets`: `"leaves"` (default) or `"all"`; `"leaves"` restricts the target set to nodes with no children
-* `boundary`: spec or code group that counts as the coverage boundary
+* `boundary` (required): spec or code group that counts as the coverage boundary
 * `boundaryKind`: `"spec"` or `"code"`; MUST be inferred when the group name is unambiguous and MUST be required when ambiguous
-* `mode`: `"direct"` or `"transitive"`
+* `mode` (required): `"direct"` or `"transitive"`
 * `edgeKinds`: optional subset of `["depends", "embeds", "references"]`; defaults to all three; an empty list is a configuration error (14.14)
 
 ### 7.5 `policy`
 
 Named policy rules constraining which dependency edges may exist. Each rule has:
 
-* `name`: unique rule name
-* `type`: `"forbidden"` or `"allowedOnly"`
-* `from`, `to`: selectors
+* `name` (required): unique rule name
+* `type` (required): `"forbidden"` or `"allowedOnly"`
+* `from`, `to` (required): selectors
 * `kinds`: optional subset of the dependency edge kinds; defaults to all three
 
 A selector matches nodes (or code locations) by exactly one of: `{ group: <name> }`, `{ files: <glob> }`, or `{ tags: [<tag>, ...] }` (at least one listed tag). A group selector MAY include `kind: "spec" | "code"`; as with `boundaryKind` (7.4), the kind MUST be inferred when the name is unambiguous and MUST be given when the name exists as both a spec group and a code group (14.14).
@@ -384,7 +387,7 @@ A profile's required nodes are the nodes of the `target` group, restricted by `t
 
 ### 8.2 Output
 
-`xspec coverage` runs all profiles; `xspec coverage <name>` runs one. The report includes: counts of required, covered, uncovered, and ignored nodes; the identity of every covered, uncovered, and ignored node; and for each covered node at least one covering path. The ignored nodes are the nodes of the target group excluded from the required set by 8.1, each reported with its exclusion reason: root node, `coverage="none"`, non-leaf under `targets: "leaves"`, or lacking every `targetTags` tag. With `--check`, the command exits 1 if any required node is uncovered. JSON output MUST be available and MUST contain the same information.
+`xspec coverage` runs all profiles; `xspec coverage <name>` runs one. The report includes: counts of required, covered, uncovered, and ignored nodes; the identity of every covered, uncovered, and ignored node; and for each covered node at least one covering path. The ignored nodes are the nodes of the target group excluded from the required set by 8.1, each reported with its exclusion reasons — all that apply, listed in this fixed order: root node, `coverage="none"`, non-leaf under `targets: "leaves"`, lacking every `targetTags` tag. With `--check`, the command exits 1 if any required node is uncovered. JSON output MUST be available and MUST contain the same information.
 
 ## 9. Impact Analysis
 
@@ -417,7 +420,7 @@ A review session is stored at `.xspec/reviews/<session-name>.json` as a plain, d
 
 ### 10.2 Items
 
-A review item contains: `id` (unique within the session), `kind` (assigned by the strategy), `scope` (the requirement nodes or code locations under review), `context` (nodes whose text frames the review), `reason`, `origin` (the originating changed nodes, when applicable), `baseline` and `current` (the relevant hashes), `status`, optional `note`, and `blockedBy` (item IDs that must resolve first). Items MUST carry enough baseline identity and baseline text that they remain actionable after the referenced nodes are edited, moved, or deleted.
+A review item contains: `id` (unique within the session), `kind` (assigned by the strategy), `scope` (the requirement nodes or code locations under review), `context` (nodes whose text frames the review), `reason`, `origin` (the originating nodes (5.6), when applicable), `baseline` and `current` (the relevant hashes), `status`, optional `note`, and `blockedBy` (item IDs that must resolve first). Items MUST carry enough baseline identity and baseline text that they remain actionable after the referenced nodes are edited, moved, or deleted.
 
 ### 10.3 Statuses
 
@@ -426,6 +429,8 @@ A review item contains: `id` (unique within the session), `kind` (assigned by th
 * `no-change`: reviewed; intentionally left unchanged
 * `skipped`: intentionally deferred or ignored
 * `invalidated`: previously resolved, but relevant state changed afterward
+
+An item is resolved when its status is `updated`, `no-change`, or `skipped`; `unresolved` and `invalidated` items need review. An item is blocked while any item in its `blockedBy` is not resolved; because `invalidated` is not a resolved status, a blocker that becomes invalidated re-blocks its dependents until it is resolved again.
 
 ### 10.4 Relevant hashes and invalidation
 
@@ -438,22 +443,22 @@ The relevant hashes per built-in item kind are:
 * `code-impact`: subtreeHash and effectiveHash of each node the scoped code location references or embeds
 * `uncovered-requirement`: subtreeHash and metadataHash of the scope node
 
-A resolved item becomes `invalidated` when any relevant hash differs from the value recorded at resolution, when any scope, context, or origin node is deleted or its identity ceases to resolve through the journal, or when re-derivation (10.5) changes its context set. Items added during a session follow the same rule. Item validity is recomputed against the current graph whenever a session is read (`status`, `next`, `show`, `export`); a stale resolution is never reported as resolved and a stale item is never served by `next`.
+A resolved item becomes `invalidated` when any relevant hash differs from the value recorded at resolution, when any scope, context, or origin node is deleted or its identity ceases to resolve through the journal, or when re-derivation (10.5) changes its context set. Items added during a session follow the same rule. Item validity is recomputed against the current graph whenever a session is read (`status`, `next`, `show`, `export`); a stale resolution is never reported as resolved — the item is reported `invalidated` and needs review again (10.3, 10.7).
 
 ### 10.5 Built-in strategy: path-blocks
 
 `path-blocks` is the default strategy for baseline-based sessions. For each `changed` node N, skipping nodes that have a `changed` ancestor:
 
 1. one `subtree-coherence` item — scope: N and all descendants, reviewed as a single block
-2. one `parent-consistency` item per non-root ancestor A on the path to the root — scope: A's own text; context: the changed branches beneath A; when multiple changed nodes share A, A receives a single item against the union of changed branches, and its `blockedBy` is the set of items directly beneath it across all of those branches
+2. one `parent-consistency` item per non-root ancestor A on the path to the root — scope: A, reviewed against its own text; context: the changed branches beneath A; when multiple changed nodes share A, A receives a single item against the union of changed branches, and its `blockedBy` is the set of items directly beneath it across all of those branches
 
 For metadata and dependency impact:
 
-1. one `metadata-consistency` item per `metadata-changed` node — context: the added and removed dependency targets and changed attributes
+1. one `metadata-consistency` item per `metadata-changed` node — context: the added and removed `d` targets; `coverage` and `tags` changes are described in the item's `reason`
 2. one `dependency-consistency` item per requirement node having a dependency edge to a target whose effectiveHash changed — context: those changed targets
 3. one `code-impact` item per impacted code location
 
-Ordering is deepest first; a `parent-consistency` item is blocked until every item beneath it resolves. When an item resolves with status `updated`, the session is re-derived at resolve time: the generators above run again for the session's baseline against the current workspace; existing items, matched by kind and scope, keep their `id`, status, and recorded hashes (an item whose context set changes is updated and, if resolved, becomes `invalidated` per 10.4); items that no longer generate remain in the session; new items — including a `subtree-coherence` item for any node whose own text changed — are appended with current hashes; and `blockedBy` sets are recomputed. Re-derivation is the only path through which sibling subtrees enter a session.
+Items are totally ordered: requirement-scoped items first, sorted by scope-node depth (ID segment count; roots are 0) deepest first, then by kind — `subtree-coherence`, `metadata-consistency`, `dependency-consistency`, `parent-consistency` — then by scope-node file path, then by document order; `code-impact` items follow, sorted by code-location identity. Paths and identities compare as bytes; a `subtree-coherence` item's scope node is its subtree root. `status`, `next`, and `export` present items in this order, and a `parent-consistency` item is blocked until every item beneath it resolves. When an item resolves with status `updated`, the session is re-derived at resolve time: the generators above run again for the session's baseline against the current workspace; existing items, matched by kind and scope, keep their `id`, status, and recorded hashes (an item whose context set changes is updated and, if resolved, becomes `invalidated` per 10.4); items that no longer generate remain in the session; new items — including a `subtree-coherence` item for any node whose own text changed — are added with current hashes and take their place in item order; and `blockedBy` sets are recomputed. Re-derivation is the only path through which sibling subtrees enter a session.
 
 ### 10.6 Built-in strategy: audit
 
@@ -474,26 +479,26 @@ xspec review resolve <name> <item-id> --status <status> [--note <text>]
 xspec review export <name> --json
 ```
 
-`next` returns the first unresolved, unblocked, valid item. With `--json`, the payload MUST be self-contained: scope text, context text, origin before/after text, source ranges, and hashes, so the item can be acted on without further reads.
+`next` returns the first item in the session's item order (10.5, 10.6, or the coverage order below) that needs review (`unresolved` or `invalidated`, 10.3) and is unblocked. With `--json`, the payload MUST be self-contained: scope text, context text, origin before/after text, source ranges, and hashes, so the item can be acted on without further reads. A coverage session's `uncovered-requirement` items are ordered by file path, then document order.
 
 `split` decomposes a `subtree-coherence` item whose scope root has children into one `subtree-coherence` item per child subtree plus one `parent-consistency` item for the scope root's own text, whose context is the child subtrees and whose `blockedBy` is those child items. All new items additionally inherit the original's `blockedBy`; every item that was blocked by the original becomes blocked by all of the new items; the original item is removed from the session and its `id` is never reused. `split` on an item of any other kind, or on a `subtree-coherence` item whose scope root has no children, is refused.
 
-`resolve` sets the status and records the current relevant hashes. `--status` accepts `updated`, `no-change`, and `skipped`; any other value is a usage error. Resolving a blocked item is refused, as is `review create` with the name of an existing session.
+`resolve` sets the status and records the current relevant hashes; it applies to any unblocked item regardless of current status, so an `invalidated` (or previously resolved) item is re-resolved the same way. `--status` accepts `updated`, `no-change`, and `skipped`; any other value is a usage error, as is an unknown session name or item ID in any `review` command's arguments (12.0). Resolving a blocked item is refused, as is `review create` with the name of an existing session.
 
 ## 11. Query
 
 `xspec query` gives scripts and agents set-level, JSON-only access to the graph:
 
 ```sh
-xspec query node <path#id>
+xspec query node <node>
 xspec query nodes [--group <g>] [--file <glob>] [--tag <t>] [--coverage required|none]
-xspec query edges [--from <path#id>] [--to <path#id>] [--kind <kind>]
-xspec query subtree <path#id>
-xspec query ancestors <path#id>
-xspec query reachable --from <path#id> --to <path#id> [--kinds <kinds>]
+xspec query edges [--from <graph-node>] [--to <graph-node>] [--kind <kind>]
+xspec query subtree <node>
+xspec query ancestors <node>
+xspec query reachable --from <graph-node> --to <graph-node> [--kinds <kinds>]
 ```
 
-`node` returns identity, source range, own and subtree text, all four hashes, tags, coverage attribute, and incoming and outgoing edges by kind. `nodes` filters combine conjunctively. `reachable` reports whether a dependency path exists under the given kinds and, when one does, one shortest witness path. All results use stable, deterministic ordering.
+`<node>` is a requirement-node identity: `path#id`, or a bare `path` for a file's root node (1.5). `<graph-node>` is any graph-node identity: a requirement node, or a code location (`path`, `path#unit`, or `path#unit@N`; 4.6); whether a bare path names a root node or a code file follows from the file's group (7), and a path in no configured group is unknown (12.0). `node` returns identity, source range, own and subtree text, all four hashes, tags, coverage attribute, and incoming and outgoing edges by kind. `nodes` filters combine conjunctively. `reachable` reports whether a dependency path exists under the given kinds and, when one does, one shortest witness path. All results use stable, deterministic ordering.
 
 ## 12. Commands
 
@@ -502,15 +507,15 @@ xspec query reachable --from <path#id> --to <path#id> [--kinds <kinds>]
 * Every command supports `--json`, emitting a single JSON document. Where this specification defines report content, the JSON form MUST contain the same information.
 * Every command supports `--config <path>` (7).
 * All output, generated files, and stored data are byte-deterministic for identical input: no wall-clock values, no randomness, no absolute paths, no environment-dependent content.
-* Exit codes: `0` — success, including informational findings (`ids`, `show`, `impact`, `query`, `coverage` without `--check`); `1` — validation failures and check-mode findings (`build` on invalid sources, `check`, `coverage --check`, refused `rename`/`move`, refused review operations (10.7)); `2` — usage or configuration errors (unknown commands, flags, profiles, sessions, or groups; unknown node identities or files named in arguments; invalid session names; missing or invalid configuration; a baseline that cannot be read or reconstructed).
+* Exit codes partition all outcomes; every defined failure belongs to exactly one class. `0` — success, including informational reports (`ids`, `show`, `impact`, `query`, `coverage` without `--check`). `1` — findings: source, workspace, and operation validation failures (`build` on invalid sources, `check` findings, `coverage --check` with uncovered requirements, refused `rename`/`move` (6.4, 6.5), refused review operations (10.7)). `2` — usage and configuration errors: unknown commands or flags; invalid flag values; unknown profiles, sessions, groups, review items, node identities, or files named in arguments; invalid session names; missing or invalid configuration (14.14); a baseline that cannot be read or reconstructed (6.3); a mutating command refused because another is running (13.5).
 
 ### 12.1 `xspec build`
 
-Parses configured sources; validates section structure, IDs, tags, and references; resolves dependencies; generates TypeScript modules and declaration maps; optionally emits Markdown; and writes graph data. Rebuilding regenerates every derived file (13.4).
+Parses configured sources; validates section structure, IDs, tags, and references; resolves dependencies; generates TypeScript modules (13.1); optionally emits Markdown; and writes graph data. Rebuilding regenerates every derived file and removes recorded derived files that the current sources and configuration no longer generate (13.3, 13.4).
 
 ### 12.2 `xspec check`
 
-Performs all build validations without accepting stale outputs, and additionally verifies: generated files are content-identical to what the current sources and configuration generate (14.10); all dependency and text references resolve and are static; all TypeScript spec references resolve; no dependency cycles and no spec import cycles exist; the journal is well-formed and replayable with no conflicting mappings; configured coverage profiles and policy rules are valid; no policy violations exist; review sessions are not internally corrupt. Exits 1 on any finding.
+Performs all build validations without accepting stale outputs, and additionally verifies: generated files are content-identical to what the current sources and configuration generate, and no recorded derived file remains at a path no longer generated (14.10); all dependency and text references resolve and are static; all TypeScript spec references resolve; no dependency cycles and no spec import cycles exist; the journal is well-formed and replayable with no conflicting mappings; no policy violations exist; review sessions are not internally corrupt. Exits 1 on any finding. Configuration validity is enforced at load by every command (14.14) and is a usage error, not a `check` finding.
 
 ### 12.3 `xspec ids`
 
@@ -519,10 +524,10 @@ Lists requirement IDs grouped by file. Supports `--tree`, `--file <path>`, `--js
 ### 12.4 `xspec show`
 
 ```sh
-xspec show <path#id>
+xspec show <node>
 ```
 
-Prints one requirement for human reading: ID, source range, own and subtree text, hashes, and edges by kind. `query node` is the machine-facing equivalent.
+Accepts `path#id`, or a bare `path` for a file's root node (1.5). Prints one requirement for human reading: ID, source range, own and subtree text, hashes, and edges by kind. `query node` is the machine-facing equivalent.
 
 ### 12.5 `xspec coverage`, `xspec impact`, `xspec review`, `xspec query`, `xspec rename`, `xspec move`
 
@@ -532,7 +537,7 @@ As specified in sections 8, 9, 10, 11, and 6.
 
 ### 13.1 Generated TypeScript
 
-`NAME.mdx` generates `NAME.xspec.ts` plus declaration maps, with a generated-file header (4).
+`NAME.mdx` generates the TypeScript module `NAME.xspec.ts`, beginning with the generated-file header (4), together with whatever companion files beside it are needed so that the specifier `./NAME.xspec` resolves for consumers: type checking (4.1), hover documentation and go-to-definition into the source `.mdx` (4.2), and runtime behavior (4.3–4.5) MUST all hold under standard TypeScript tooling with no xspec runtime dependency. The module and its companion files are derived files (13.4).
 
 ### 13.2 Markdown output
 
@@ -540,20 +545,20 @@ As specified in sections 8, 9, 10, 11, and 6.
 
 ### 13.3 Graph data
 
-xspec maintains graph data under `.xspec/`, containing requirement nodes, code locations, edges by kind, source ranges, all four hashes, coverage attributes, and tags. Graph data serves `check`, `ids`, `show`, `coverage`, `impact`, `review`, and `query`. Read results never come from stale data: when graph data is missing or does not match the current sources and configuration, `ids`, `show`, `coverage`, `impact`, `review`, and `query` refresh it — writing exactly what `xspec build` would write, without regenerating TypeScript modules or Markdown — before answering. `check` never refreshes; it reports staleness instead (14.10).
+xspec maintains graph data under `.xspec/`, containing requirement nodes, code locations, edges by kind, source ranges, all four hashes, coverage attributes, tags, and the paths of the derived files most recently generated (13.4). Graph data serves `check`, `ids`, `show`, `coverage`, `impact`, `review`, and `query`. Read results never come from stale data: when graph data is missing or does not match the current sources and configuration, `ids`, `show`, `coverage`, `impact`, `review`, and `query` refresh it — writing exactly what `xspec build` would write, except that no TypeScript or Markdown is generated or removed and the recorded derived-file paths are left unchanged — before answering. If the current sources fail `build` validation, these commands report the validation errors and exit 1 without answering. `check` never refreshes; it reports staleness instead (14.10).
 
 ### 13.4 Derived and durable files
 
 Every file xspec writes is a plain file suitable for committing, written with stable ordering and sorted keys. Files are classified:
 
-* Derived: generated TypeScript modules, declaration maps, emitted Markdown, and graph data. Derived files are fully reproducible from sources and configuration via `xspec build`; a conflicted, corrupted, or deleted derived file is correctly resolved by rebuilding.
+* Derived: generated TypeScript modules and their companion files (13.1), emitted Markdown, and graph data. Derived files are fully reproducible from sources and configuration via `xspec build`; a conflicted, corrupted, deleted, or orphaned derived file is correctly resolved by rebuilding (12.1).
 * Durable: the journal (6.1) and review sessions (10.1). Durable files record operations and resolutions; they are not reproducible, are never regenerated, and MUST NOT be modified except by their owning commands. They are line-oriented or stably keyed so that concurrent additions merge textually; `xspec check` validates their integrity and reports unresolvable states.
 
-Derived-file paths belong to xspec: writing a derived file replaces whatever exists at its path, whether or not xspec wrote it. Derived files are never sources: paths ending `.xspec.ts` and their declaration maps, files under `.xspec/`, and files at the configured Markdown emit destinations (7.3) are excluded from every spec and code group (7).
+Derived-file paths belong to xspec: writing a derived file replaces whatever exists at its path, whether or not xspec wrote it. Derived files are never sources: paths whose file name contains `.xspec.`, files under `.xspec/`, and files at the configured Markdown emit destinations (7.3) are excluded from every spec and code group (7).
 
 ### 13.5 Concurrency and isolation
 
-All state is workspace-local; instances operating on different workspaces MUST NOT interfere with each other. Within one workspace, every file write is atomic (a complete file appears or the old content remains); concurrent commands may interleave with last-write-wins per file, and any resulting derived-file inconsistency is resolved by rerunning `xspec build`.
+All state is workspace-local; instances operating on different workspaces MUST NOT interfere with each other. Within one workspace, every file write is atomic (a complete file appears or the old content remains). Commands that modify sources or durable files — `rename`, `move`, and the mutating `review` subcommands (`create`, `resolve`, `split`) — are mutually exclusive per workspace: while one runs, another MUST fail promptly with a usage error (12.0) without modifying anything, so concurrency never loses a journal append or a resolution. All other commands may run concurrently, with last-write-wins per file; any resulting derived-file inconsistency is resolved by rerunning `xspec build`. A mutating command interrupted before completion can leave sources and durable files inconsistent; `xspec check` reports such states (14).
 
 ## 14. Validation Errors
 
@@ -568,16 +573,17 @@ All state is workspace-local; instances operating on different workspaces MUST N
 7. Unknown TypeScript reference: a marker or `text` call that does not resolve; this is also a type error against the generated module.
 8. Non-static argument: a dynamic `d` or `text(...)` argument.
 9. Cycle: a dependency cycle (with the full path) or a spec import cycle.
-10. Stale generated output: a derived file whose content does not match what the current sources and configuration generate; the error names the file and instructs rebuilding.
+10. Stale generated output: a derived file whose content does not match what the current sources and configuration generate, or a recorded derived file (13.3) remaining at a path the current sources and configuration no longer generate; the error names the file and instructs rebuilding.
 11. Cross-module text call: reported at runtime and as a type error per 4.4, not by `build` or `check`.
 12. Policy violation: rule name plus offending edge.
 13. Journal error: malformed, conflicting, or unreplayable entries, naming the lines.
-14. Configuration error: unknown groups, ambiguous `boundaryKind`, invalid profile or rule shapes, unknown names passed to commands.
-15. Invalid import: an import of anything other than an xspec source file belonging to a configured spec group.
-16. Invalid construct: a JSX element other than `<S>`/`<Spec>`, an expression container other than a `text(...)` embedding, or an export statement in a source file.
+14. Configuration error: missing or invalid configuration — missing required fields or invalid profile, rule, or group shapes; unknown group names referenced by profiles, rules, or selectors; ambiguous kinds (7.4, 7.5); an empty `edgeKinds`; a capture violation (7.5); a glob resolving outside the workspace root (7); a file matched by both a spec and a code group. Reported by every command when it loads the configuration and discovers sources, as a usage error (12.0), not a finding.
+15. Invalid import: in an xspec source file, an import that is not a single default binding or does not designate an xspec source file belonging to a configured spec group (2.1); in a TypeScript file, a `.xspec` import that does not designate such a source, or a spec-module binding other than the default and `text` exports (4).
+16. Invalid construct: a JSX element other than `<S>`/`<Spec>`, an expression container other than a `text(...)` embedding or an MDX comment (2.7), or an export statement in a source file.
 17. Invalid prop: an unknown prop on `<S>`/`<Spec>`, or a `coverage` value other than `required` or `none`.
 18. Unsupported node usage: a spec module binding or node used in TypeScript other than as a dependency marker, a child property access, or a direct argument to its module's `text` export.
-19. Invalid source path: a discovered source file whose workspace-relative path contains `#`.
+19. Invalid source path: a discovered spec or code source file whose workspace-relative path contains `#`, or a spec-group file without the `.mdx` extension (7.1).
+20. Unparseable source: a spec-group file that is not well-formed MDX, or a code-group file that is not well-formed TypeScript; the error reports the location of the parse failure.
 
 ## 15. Example
 
