@@ -17,7 +17,7 @@ Your spawn prompt names exactly one mission file under `.claude/prompts/engineer
 - **Phase 10:** never modify the test harness. All tests must pass.
 - The product and the test harness are distinct programs; never couple their implementations.
 
-The Concepts and Core Documents sections of `specs/PROCESS.md` define the semantics of the documents you build against — for Phase 9, especially certification: a test is certified when it passes against the conformer and fails against each of its violators, and fixtures are implemented as part of the harness. Consult what your phase needs; the rest of PROCESS.md (phases, actors, loops) is not your concern.
+The Concepts and Core Documents sections of `specs/PROCESS.md` define the semantics of the documents you build against — for Phase 9, especially certification: a test is certified when it passes against the conformer and fails against each of its violators, and fixtures are implemented as part of the harness. Consult what your phase needs — the specific sections, located by heading, not the whole document; the rest of PROCESS.md (phases, actors, loops) is not your concern.
 
 `AGENTS.md` at the repo root is the iteration-to-iteration store of build/lint/run knowledge: consult it, and record anything new you learn about building, linting, or running the code. Nothing else belongs in that file.
 

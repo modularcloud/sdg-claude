@@ -7,7 +7,7 @@ Like PROCESS.md, this file must not be modified by agents running the process.
 ## 1. Prerequisites
 
 - A git repository with a GitHub remote, push access, and GitHub Actions enabled.
-- `gh` CLI authenticated (PRs, code review comments, CI status).
+- Authenticated GitHub access for PRs, review comments, and CI status — the `gh` CLI where available, or an equivalent GitHub integration (e.g., the built-in GitHub integration on Claude Code web).
 - A Claude Code environment supporting: subagents, **forked** subagents — via `subagent_type: "fork"` where the harness registry offers that type, or via an untyped spawn on harnesses honoring `CLAUDE_CODE_FORK_SUBAGENT=1` (the scaffold's settings set it); either way the spawn must inherit the conversation history — and **SendMessage** continuation of a previously spawned agent with its context intact. If forks or SendMessage are unavailable, halt and tell Developer this environment cannot run the process as specified. (Claude Teammates is a legacy fallback for long-lived agent threads; with SendMessage continuation it is unnecessary.)
 - A sandboxed or disposable execution environment (Claude Code web/cloud, a container, or a VM). `.claude/settings.json` ships with `permissions.defaultMode: "bypassPermissions"`: the process runs long and unattended, and a wrongly-restricted permission set that silently stalls an agent is a worse failure here than broad permissions in a sandbox. Developers running on an unsandboxed machine should change that setting deliberately.
 
@@ -39,7 +39,8 @@ The main thread MUST NOT:
 
 - read or edit the contents of specs, modules, patches, problems files, code, or `specs/PHILOSOPHY.md`;
 - draft, review, summarize, or paraphrase process content (relaying verbatim is fine);
-- answer any Developer question itself, however trivial — Liaison answers;
+- answer any Developer question itself beyond §5's process-state pings — Liaison answers;
+- narrate its mechanics to Developer: no phase numbers, no actor or agent names, no spawn/relay/SendMessage play-by-play, no internal file names, no previews of what happens next — to Developer the process presents as a black box;
 - make any judgment call that PROCESS.md assigns to an actor.
 
 The main thread MAY:
@@ -48,9 +49,10 @@ The main thread MAY:
 - perform existence-level checks to drive control flow (`ls specs/tmp/`, `test -f`, listing `specs/modules/` filenames);
 - spawn agents, continue them with SendMessage, and act on their `OUTCOME:` lines;
 - pipe one agent's output verbatim into another agent's spawn prompt;
-- post Liaison `ASK DEVELOPER` / `REPLY` blocks to Developer verbatim, plus one-line mechanical status notes at phase transitions.
+- post Liaison `ASK DEVELOPER` / `REPLY` blocks to Developer verbatim, plus at most rare one-sentence status notes in plain product language ("Drafting the specification", "Building the test harness", "Running the test suite") — never process vocabulary, and never one per step;
+- answer pure process-state pings from Developer ("ready?", "how's it going?", a bare "continue") with a one-line plain-language reply from its own bookkeeping — never anything touching content or intent.
 
-Turn discipline: run continuously through the phases. End the turn only when an ASK is pending with Developer, or the process is complete/idle. Do not stop to report progress or ask permission to continue.
+Turn discipline: run continuously through the phases. A returned agent or a completed phase is never a stopping point — take the next runbook action in the same turn; never announce what you will do next and stop. End the turn only when an ASK is pending with Developer, or the process is complete/idle. Do not stop to report progress or ask permission to continue.
 
 ## 4. Agent protocol
 
@@ -71,6 +73,8 @@ A `QUESTION FOR DEVELOPER` block contains the question(s) plus a short mechanica
 
 **Pause and continue.** An agent returning `OUTCOME: QUESTION` is *waiting, not finished*. After the answer is obtained (§5), the Orchestrator continues **the same agent** with `SendMessage("ANSWER: <answer>")` and the agent proceeds with its context intact. Never restart a paused agent to deliver an answer, and never spawn a replacement while one is waiting.
 
+**Infrastructure failure recovery.** Agents sometimes die without a final `OUTCOME:` line — API errors, stream stalls, harness kills. That is a mechanical event, not a process event, and waiting on a dead agent deadlocks the process. On a failure notification, or on prolonged silence with no way to confirm liveness: resume the same agent once via SendMessage ("you were interrupted by an infrastructure failure — pick up where you left off and finish with your OUTCOME line"). If it cannot be resumed or dies again, spawn a fresh agent with the identical mission and parameters — safe by design, since durable work lives in committed files and every mission re-verifies from disk. Three failures of the same spawn is a stall: run a Liaison consult episode.
+
 ## 5. Asking Developer — Claude binding
 
 PROCESS.md §Asking Developer, implemented as:
@@ -88,6 +92,7 @@ PROCESS.md §Asking Developer, implemented as:
 
 ### Routing Developer messages
 
+- **A pure process-state ping** (readiness check, "what phase are we in", a bare "continue") answerable entirely from the Orchestrator's own bookkeeping → one-line mechanical reply; no Liaison spawn. Anything carrying substantive content or intent takes the routes below.
 - **An ASK is pending** → relay the message verbatim to that Liaison episode via SendMessage; continue the pipeline above. Liaison decides whether the message answers the open question or is an interruption: open questions are never dropped — if the message is something else, Liaison handles it and re-surfaces the question in the same turn, reading genuinely ambiguous messages as answers first. A single Liaison message may carry both a directive and a re-surfaced `ASK DEVELOPER:` block — the Orchestrator executes the directive and posts the ASK.
 - **No pending ASK** (process active or idle) → spawn a fresh Liaison fork to interpret the message. Liaison returns one of:
   - `OUTCOME: REPLY — …` with a `REPLY:` block — the Orchestrator posts it verbatim (status questions, "what is this project?", small talk);
@@ -151,7 +156,7 @@ loop:
            scopes — PROCESS.md requires multiple reviewing subagents. Each returns
            COMPLIANT or a list of gaps with citations
          - one sdg-engineer (mission engineer/verify.md): run the full test suite
-           required at this phase locally, and report CI status on the PR (gh pr checks)
+           required at this phase locally, and report CI status on the PR
       B. If every reviewer returned COMPLIANT and required tests/CI are green:
            run the Code Review Sub-Flow (below)
          If VERIFY reported pending CI (and nothing else is red):
@@ -202,7 +207,7 @@ Phase 0 runs at the start of **every** session. Paths: core docs in `specs/`, te
   | Complete / idle | Specs exist; no seed, no active patch, no temp files | Return `idle`; route the Developer's message per §5 |
 
   Audit rules: work exists only on its branch until Phase 11 — if the current checkout shows no state, check remote `patch/*` and `sdg/initial-build` branches before classifying, and classify from the newest such branch. If several patches are non-Complete, the most recently modified one is the active patch — flag the rest. Verify the checked-out branch matches the active patch (`patch/<short-title>`); flag mismatches rather than fixing them. Flag unpaired modules (a `MODULE.md` without its `TEST-MODULE.md`, or vice versa), uncommitted changes, and unexpected `specs/tmp/` files. An interrupted iteration needs no special handling beyond the table — the resumed phase re-verifies from files, and a crash that left no `REVIEW.md` behind is treated as converged (downstream problems files catch what slips). Return `RESUME AT: phase <n> | not-bootstrapped | idle` with the active patch's path, type, stage, and (for Accepted bugs) route, plus a short state summary listing every anomaly. The Orchestrator hands the anomaly list — and any `not-bootstrapped` report — to a Liaison episode rather than acting on it or dropping it.
-- **Phase 1 — Seed.** Spawn a Liaison fork (SEED INTAKE): if the Developer's message(s) already contain the seed, confirm scope (ASK only if genuinely unclear), write `specs/tmp/SEED.md` on Developer's behalf, commit. If no seed exists, ASK for one.
+- **Phase 1 — Seed.** A readiness ping while awaiting the seed gets the Orchestrator's mechanical reply ("ready — send the seed"); the intake fork spawns when seed content arrives. Spawn a Liaison fork (SEED INTAKE): if the Developer's message(s) already contain the seed, confirm scope (ASK only if genuinely unclear), write `specs/tmp/SEED.md` on Developer's behalf, commit and push. If no seed exists, ASK for one.
 - **Phase 2 — Triage & draft.** Spawn sdg-specialist (mission `specialist/triage.md`). Initial build: draft `specs/SPEC.md` (+ modules) and `specs/GOALS.md` (GOALS.md commits only after explicit Developer approval via QUESTION), create branch `sdg/initial-build`, commit, push, open a PR, delete `SEED.md` (consumed); then jump to Phase 4. Patch: create branch `patch/<short-title>`, draft the patch document (`Stage: Proposed`), commit, push, open a PR, delete `SEED.md`. Ambiguities in both cases → QUESTION (§5).
 - **Phase 3 — Refine the patch.** §6 with target = the patch (IP or Bug bundle). The Driver may reclassify IP↔Bug (update the document; keep the index). On HALT: `Stage: Accepted`, and the Driver's report carries a `ROUTE:` line. Routing after: IP → Phase 4. Bug needing `TEST-SPEC.md` changes → Phase 6; only `CERTIFICATIONS.md` changes → Phase 7; neither → the Driver has seeded `specs/tmp/FIX_PLAN.md` with the harness fixes as part of its HALT commit → Phase 9.
 - **Phase 4 — Refine SPEC.md.** §6, target SPEC.md (on the initial build, refinement starts from Specialist's draft). GOALS.md↔SPEC.md contradictions are resolved through a QUESTION episode; `specs/GOALS.md` changes only with explicit Developer approval. Driver finds the problem is in the patch → `PATCH-PROBLEMS.md` → Phase 3. On HALT (IP flow only): `Stage: Applied` — never for a bug reached via jump-back; `Applied` is an IP-only stage.
@@ -218,7 +223,7 @@ Phase 0 runs at the start of **every** session. Paths: core docs in `specs/`, te
 
 - **Branches:** `sdg/initial-build` for the initial build; `patch/<short-title>` for patches (per PROCESS.md). A PR is opened at the first push and anchors CI and the Code Review Sub-Flow.
 - **Commits:** `sdg(phase-N): <imperative summary>` (Liaison uses `sdg(liaison): …`). Agents that changed durable files commit only what their mission touched and always push before finishing; Reviewer's `specs/tmp/REVIEW.md` is transient and never committed.
-- **CI:** GitHub Actions, wired in Phase 8; checked with `gh pr checks` / `gh run list`. Green CI is part of spec compliance (PROCESS.md Ralph Loop note 2). Local-only tests are marked per TEST-SPEC.md and excluded from CI — never silently skipped.
+- **CI:** GitHub Actions, wired in Phase 8; status read through whatever GitHub access the environment provides (`gh` locally, the built-in integration on web). Green CI is part of spec compliance (PROCESS.md Ralph Loop note 2). Local-only tests are marked per TEST-SPEC.md and excluded from CI — never silently skipped.
 - **Merging** happens only in Phase 11, per DEVOPS.md.
 
 ## 10. State discipline and sanctioned adaptations
@@ -239,3 +244,4 @@ Phase 0 runs at the start of **every** session. Paths: core docs in `specs/`, te
 10. Two convergence valves exist that PROCESS.md does not define: the §6 twelve-iteration escalation and the §7 stall guard — both consult Developer through Liaison rather than halting silently.
 11. The Code Review Sub-Flow operates on unresolved PR comments: a comment's thread is resolved either at rejection (with rationale) or when its implementing TASK completes, making resolved state the durable record of "reviewed".
 12. Stage flips happen only at phase ends; stages are not rewound on backward jumps — problems files, which outrank stages at Phase 0, govern resume until refinement completes and the End-Stage flip restores consistency. On the Phase 3 `ROUTE: neither` path, the Driver seeds `FIX_PLAN.md` itself (PROCESS.md leaves the actor unnamed).
+13. The Orchestrator answers pure process-state pings (readiness, current phase, a bare "continue") with one-line mechanical replies from its own bookkeeping — a narrow carve-out from Liaison's ownership of Developer communication; anything touching content or intent still goes to Liaison.

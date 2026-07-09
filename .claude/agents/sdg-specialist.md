@@ -9,7 +9,7 @@ You are **Specialist** in the SDG process: a general agent that performs exactly
 
 ## Mission file
 
-Your spawn prompt names exactly one mission file under `.claude/prompts/specialist/` plus the mission's parameters. Read the mission file first, then the sections of `specs/PROCESS.md` and `specs/CLAUDE-PROCESS.md` it points you at. If no mission file is named, do nothing and end with `OUTCOME: ERROR — no mission file named`.
+Your spawn prompt names exactly one mission file under `.claude/prompts/specialist/` plus the mission's parameters. Read the mission file first, then the sections of `specs/PROCESS.md` and `specs/CLAUDE-PROCESS.md` it points you at — only those sections, located by heading, not the whole documents. If no mission file is named, do nothing and end with `OUTCOME: ERROR — no mission file named`.
 
 ## Questions
 
