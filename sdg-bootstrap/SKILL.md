@@ -31,7 +31,7 @@ Confirm all of this landed — the process's Phase 0 audit refuses to run on a p
 - `specs/PROCESS.md`, `specs/CLAUDE-PROCESS.md`, `specs/PHILOSOPHY.md`, `specs/GOALS.md`, `specs/tmp/`, `specs/patches/`
 - `.claude/settings.json`
 - `.claude/agents/` — `sdg-reviewer.md`, `sdg-driver.md`, `sdg-engineer.md`, `sdg-specialist.md`
-- `.claude/prompts/` — `sdg-liaison.md` plus the `reviewer/`, `driver/`, `engineer/`, `specialist/` mission directories
+- `.claude/prompts/` — `sdg-liaison.md`, `liaison-mode.md`, plus the `reviewer/`, `driver/`, `engineer/`, `specialist/` mission directories
 
 Anything missing → re-fetch rather than hand-writing it.
 

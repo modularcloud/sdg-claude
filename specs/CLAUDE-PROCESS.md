@@ -29,7 +29,7 @@ Liaison forks are spawned **fresh for each question episode** (a fork snapshots 
 
 **Mission files.** The four agent definitions carry only the role-invariant contract — identity, lifecycle, outcome protocol, permitted edits. The phase- and target-specific procedure lives in mission files under `.claude/prompts/<actor>/`, and every spawn prompt for `sdg-reviewer`, `sdg-driver`, `sdg-engineer`, or `sdg-specialist` names exactly one of them; the agent reads it before doing anything else, and a spawn without one fails fast with `OUTCOME: ERROR`. Mission files state purpose (process position, downstream consumers, governing PROCESS.md sections), goals, constraints, and output contracts — not methods — and contain only the delta for their context, never restated role or PROCESS.md rules; §§6–8 are the single map of phase → (agent, mission file, parameters).
 
-No agent may edit `.claude/` (agents, prompts, settings) — the harness configuration is part of the scaffold, immutable like PROCESS.md itself.
+No agent may edit `.claude/` (agents, prompts, settings) — the harness configuration is part of the scaffold, immutable like PROCESS.md itself. One exception: `.claude/prompts/liaison-mode.md` is Developer-owned configuration of Liaison's decision rights, which Liaison alone may edit, and only on explicit Developer instruction.
 
 Model and reasoning effort are tuned per agent via the `model:` (`sonnet` | `opus` | `haiku` | `fable` | a full model ID | `inherit`) and `effort:` (`low` | `medium` | `high` | `xhigh` | `max`) frontmatter keys in `.claude/agents/`. Shipped defaults: every agent runs on `fable`; Reviewer at `effort: max`; Driver, Engineer, and Specialist at `effort: high`. The Orchestrator and Liaison have no frontmatter — they run at the session model and effort, which `.claude/settings.json` pins to Fable and requests max effort for (`effortLevel` caps at `xhigh` in settings files, so max is additionally requested via `env.CLAUDE_CODE_EFFORT_LEVEL`; `xhigh` is the guaranteed floor). Liaison is a fork, and forks always inherit the session model — it cannot be tuned independently of the main thread. Developers without Fable access should downgrade these defaults.
 
@@ -81,7 +81,7 @@ PROCESS.md §Asking Developer, implemented as:
 
 1. Agent X pauses with `OUTCOME: QUESTION`.
 2. The Orchestrator spawns a **fresh Liaison fork**, passing verbatim: X's `QUESTION FOR DEVELOPER` block, X's role and current phase, and pointers Liaison may read for context (`specs/tmp/REVIEW.md` during refinement, the active patch, relevant specs).
-3. Liaison attempts to answer on Developer's behalf from chat history, `specs/PHILOSOPHY.md`, and the relevant documents.
+3. Liaison attempts to answer on Developer's behalf from chat history, `specs/PHILOSOPHY.md`, and the relevant documents — with the decision rights set by `.claude/prompts/liaison-mode.md` (CTO mode decides technical questions itself; Project Manager mode surfaces major technical choices; Developer may customize).
    - Confident → returns `OUTCOME: ANSWER — <answer>` — never for approval-gated matters: anything PROCESS.md gates on explicit Developer approval always goes to Developer.
    - Not confident → returns `OUTCOME: ASK` with an `ASK DEVELOPER:` block phrased for Developer.
 4. The Orchestrator posts the `ASK DEVELOPER:` block content to Developer **verbatim** and ends the turn. When Developer replies, the Orchestrator relays the reply to the same Liaison fork via SendMessage. Follow-up rounds repeat 3–4; multi-round exchanges are normal.
