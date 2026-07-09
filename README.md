@@ -24,7 +24,12 @@ rsync -a --exclude README.md --exclude LICENSE --exclude sdg-bootstrap sdg-tmp/ 
 
 Then make sure the project is a git repository with a GitHub remote and Actions enabled, open Claude Code in it, and describe what you want to build.
 
-**Requirements:** Claude Code (web or CLI) with access to Claude Fable; `git` and an authenticated `gh` CLI; a GitHub repository with Actions enabled; a sandboxed/disposable environment (see above).
+**Requirements:** Claude Code (desktop, CLI, or web) with access to Claude Fable; `git` plus authenticated GitHub access (the `gh` CLI locally; the built-in GitHub integration on web); a GitHub repository with Actions enabled; a sandboxed/disposable environment (see above).
+
+### Running on Claude Code web
+
+- **Set `CLAUDE_CODE_FORK_SUBAGENT=1` in the repository's environment configuration** on claude.ai/code (the same place you'd set API keys). Forked subagents are how Liaison inherits your conversation; the scaffold's `.claude/settings.json` also sets this variable, but the platform-level channel is the reliable one — without it, Liaison cannot fork and the process halts at Phase 1 by design.
+- The web sandbox has no `gh` CLI; that's fine — the built-in GitHub integration covers branches, PRs, review comments, and CI status, and the process prompts are tool-agnostic about which is used.
 
 ## Layout
 

@@ -7,7 +7,7 @@ Like PROCESS.md, this file must not be modified by agents running the process.
 ## 1. Prerequisites
 
 - A git repository with a GitHub remote, push access, and GitHub Actions enabled.
-- `gh` CLI authenticated (PRs, code review comments, CI status).
+- Authenticated GitHub access for PRs, review comments, and CI status — the `gh` CLI where available, or an equivalent GitHub integration (e.g., the built-in GitHub integration on Claude Code web).
 - A Claude Code environment supporting: subagents, **forked** subagents — via `subagent_type: "fork"` where the harness registry offers that type, or via an untyped spawn on harnesses honoring `CLAUDE_CODE_FORK_SUBAGENT=1` (the scaffold's settings set it); either way the spawn must inherit the conversation history — and **SendMessage** continuation of a previously spawned agent with its context intact. If forks or SendMessage are unavailable, halt and tell Developer this environment cannot run the process as specified. (Claude Teammates is a legacy fallback for long-lived agent threads; with SendMessage continuation it is unnecessary.)
 - A sandboxed or disposable execution environment (Claude Code web/cloud, a container, or a VM). `.claude/settings.json` ships with `permissions.defaultMode: "bypassPermissions"`: the process runs long and unattended, and a wrongly-restricted permission set that silently stalls an agent is a worse failure here than broad permissions in a sandbox. Developers running on an unsandboxed machine should change that setting deliberately.
 
@@ -151,7 +151,7 @@ loop:
            scopes — PROCESS.md requires multiple reviewing subagents. Each returns
            COMPLIANT or a list of gaps with citations
          - one sdg-engineer (mission engineer/verify.md): run the full test suite
-           required at this phase locally, and report CI status on the PR (gh pr checks)
+           required at this phase locally, and report CI status on the PR
       B. If every reviewer returned COMPLIANT and required tests/CI are green:
            run the Code Review Sub-Flow (below)
          If VERIFY reported pending CI (and nothing else is red):
@@ -218,7 +218,7 @@ Phase 0 runs at the start of **every** session. Paths: core docs in `specs/`, te
 
 - **Branches:** `sdg/initial-build` for the initial build; `patch/<short-title>` for patches (per PROCESS.md). A PR is opened at the first push and anchors CI and the Code Review Sub-Flow.
 - **Commits:** `sdg(phase-N): <imperative summary>` (Liaison uses `sdg(liaison): …`). Agents that changed durable files commit only what their mission touched and always push before finishing; Reviewer's `specs/tmp/REVIEW.md` is transient and never committed.
-- **CI:** GitHub Actions, wired in Phase 8; checked with `gh pr checks` / `gh run list`. Green CI is part of spec compliance (PROCESS.md Ralph Loop note 2). Local-only tests are marked per TEST-SPEC.md and excluded from CI — never silently skipped.
+- **CI:** GitHub Actions, wired in Phase 8; status read through whatever GitHub access the environment provides (`gh` locally, the built-in integration on web). Green CI is part of spec compliance (PROCESS.md Ralph Loop note 2). Local-only tests are marked per TEST-SPEC.md and excluded from CI — never silently skipped.
 - **Merging** happens only in Phase 11, per DEVOPS.md.
 
 ## 10. State discipline and sanctioned adaptations
