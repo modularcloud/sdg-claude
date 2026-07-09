@@ -1,3 +1,4 @@
 IMPORTANT: This file may only be edited and interpreted by Liaison. Only Liaison has the full context required to interpret this file. Driver, Engineer, Specialist, and other agents should not infer answers from this file.
 
 - Developer provides seeds as precise, near-complete specification drafts (first seen with the xspec seed, 2026-07-09). Their structure, terminology, numbering, and RFC-style MUST/MAY language are deliberate; when interpreting intent, treat the seed text as carefully authored rather than a loose sketch, and preserve its fidelity.
+- Developer explicitly approved the initial `specs/GOALS.md` for xspec verbatim as proposed, with a bare "yes" (2026-07-09). Developer approves faithful distillations of their own seed text without edits; when a proposal tracks the seed closely, a concise approval request is sufficient and lengthy re-justification is unnecessary.
