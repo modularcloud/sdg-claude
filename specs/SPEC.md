@@ -60,7 +60,7 @@ Each ID segment:
 
 Here and throughout this specification, whitespace means exactly the characters U+0009 (tab), U+000A (line feed), U+000B (vertical tab), U+000C (form feed), U+000D (carriage return), and U+0020 (space), and control characters means exactly U+0000–U+001F and U+007F; no other code point (U+00A0, U+0085, and U+2028 included) belongs to either class. Tag splitting (2.6) and line dropping (3) use these same definitions.
 
-Identifier-friendly camelCase segments are recommended for clean TypeScript property access, but no naming style is enforced beyond the rules above. Segments that are not valid TypeScript identifiers are accessed with bracket notation in generated modules.
+Identifier-friendly camelCase segments are recommended for clean TypeScript property access, but no naming style is enforced beyond the rules above. Segments that are not valid TypeScript identifiers are accessed with bracket notation (2.4) in generated modules.
 
 A tag (2.6) follows the same rules as an ID segment, except that tags MAY contain `"."`.
 
@@ -95,7 +95,7 @@ An import specifier MUST be a relative path beginning with `./` or `../` and end
 
 ### 2.2 Dependency prop
 
-The `d` prop declares that one requirement depends on another. It accepts a single reference or an array, where each reference is either a static property chain rooted at an imported spec module (external form) or a string literal naming an ID in the same file (local form). The two forms MAY be mixed in one array. An external reference MAY also be the imported module itself, with no property segments, targeting that file's root node. Duplicate references to one target in a single `d` array collapse to a single edge. An empty array (`d={[]}`) declares no dependencies and is equivalent to omitting the prop.
+The `d` prop declares that one requirement depends on another. It accepts a single reference or an array literal of references, where each reference is either a static property chain rooted at an imported spec module (external form) or a static string literal naming an ID in the same file (local form). The two forms MAY be mixed in one array. An external reference MAY also be the imported module itself, with no property segments, targeting that file's root node. Duplicate references to one target in a single `d` array collapse to a single edge. An empty array (`d={[]}`) declares no dependencies and is equivalent to omitting the prop.
 
 ```mdx
 <S id="derived" d={[BASE.auth.login, "local.requirement"]}>
@@ -120,7 +120,7 @@ As specified:
 
 ### 2.4 Static argument rule
 
-The argument to `text(...)` and every reference in `d` MUST be a static string literal or a static property chain rooted at an imported spec module. Dynamic expressions are invalid (14.8).
+The argument to `text(...)` and every reference in `d` MUST be a static string literal or a static property chain rooted at an imported spec module. A static string literal is a plain single- or double-quoted string; template literals are not static. A static property chain is the module's import binding followed by zero or more segments, each either a non-computed property access whose name is an identifier (`.login`) or a computed access whose index is a static string literal (`["login-v2"]`) — the form by which segments that are not TypeScript identifiers are referenced (1.4). No other syntax participates in a chain: optional chaining, non-null assertions, parentheses, and any other index or expression form make the reference dynamic. A `text(...)` call MUST have exactly one argument. Dynamic references and `text(...)` calls of any other arity are invalid (14.8).
 
 ### 2.5 Coverage attribute
 
@@ -148,7 +148,7 @@ Repeated failed logins lock the account.
 
 ### 2.7 Permitted constructs
 
-Beyond standard Markdown content, an xspec source file may contain only spec module imports (2.1), `<S>`/`<Spec>` sections, `{text(...)}` embeddings, and MDX comments (`{/* … */}`). Any other JSX element, any other expression container, and any export statement are invalid (14.16). Comments are pure annotations: they do not enter own text or any hash, and Markdown output removes them (3). The props defined on `<S>`/`<Spec>` are `id`, `d`, `coverage`, and `tags`. The value of `id`, `coverage`, and `tags` MUST be a static string literal in quoted attribute form (as in `id="login"`); any other value form — a braced expression such as `id={"login"}` included — is invalid (14.17). The value of `d` takes the static reference forms of 2.2 and 2.4. Unknown props, and `coverage` values other than `required` and `none`, are invalid (14.17).
+Beyond standard Markdown content, an xspec source file may contain only spec module imports (2.1), `<S>`/`<Spec>` sections, `{text(...)}` embeddings, and MDX comments (`{/* … */}`). Any other JSX element, any other expression container, and any export statement are invalid (14.16). Comments are pure annotations: they do not enter own text or any hash, and Markdown output removes them (3). The props defined on `<S>`/`<Spec>` are `id`, `d`, `coverage`, and `tags`; no prop name may occur more than once on one element — a repeated prop, defined or unknown, is invalid (14.17). The value of `id`, `coverage`, and `tags` MUST be a static string literal in quoted attribute form (as in `id="login"`); any other value form — a braced expression such as `id={"login"}` included — is invalid (14.17). The value of `d` MUST be a braced expression (as in `d={BASE.auth.login}`) holding a single static reference or an array literal of static references (2.2, 2.4); a quoted or valueless `d` is invalid (14.17), and a braced `d` value that is not such a reference or array literal is a dynamic argument (14.8). Unknown props, and `coverage` values other than `required` and `none`, are invalid (14.17).
 
 ## 3. Markdown Compilation
 
@@ -160,7 +160,7 @@ When enabled (7.3), each source file compiles to a pure Markdown file. The outpu
 * replaces each `text(...)` expression with the target's compiled subtree text, fully expanded
 * preserves all other Markdown content and author whitespace
 
-Removal is exact textual deletion of the construct's own characters, in place. A line that contained non-whitespace (1.4) in the source but is left empty or whitespace-only purely by removals (or by a `text(...)` replacement whose expansion is empty) is dropped together with its line terminator; every other line keeps its remaining content and terminator. `<S>` and `<Spec>` are transparent annotations: they divide the source into requirement nodes but are not rendered as visible markup. Authors are responsible for normal Markdown spacing around in-line tags; for example, `<S id="a">Example:</S><S id="b">1. A</S>` strips to `Example:1. A`.
+Removal is exact textual deletion of the construct's own characters, in place. A line terminator is the sequence U+000D U+000A (one terminator), a U+000A not preceded by U+000D, or a U+000D not followed by U+000A; a line is a maximal terminator-free run of characters plus the terminator that ends it, and the final line MAY have no terminator. A line that contained non-whitespace (1.4) in the source but is left empty or whitespace-only purely by removals (or by a `text(...)` replacement whose expansion is empty) is dropped together with its line terminator, if any; every other line keeps its remaining content and terminator. `<S>` and `<Spec>` are transparent annotations: they divide the source into requirement nodes but are not rendered as visible markup. Authors are responsible for normal Markdown spacing around in-line tags; for example, `<S id="a">Example:</S><S id="b">1. A</S>` strips to `Example:1. A`.
 
 ## 4. Generated TypeScript Modules
 
@@ -205,7 +205,7 @@ function printHello() {
 
 A marker records a `references` edge from the enclosing code location to the node. At runtime, a marker is a harmless property read; markers MUST be valid with no additional tooling installed. A bare reference to the root node records a `references` edge to the root node only; because roots are never coverage targets, a root marker grants no coverage, but it makes the code location impacted by any change in the document (9.2).
 
-A marker and the argument to `text(...)` MUST each be a property chain rooted directly at a spec module import binding; the static argument rule (2.4) applies in TypeScript equally (14.8). Spec module bindings and nodes support no other value-level use: aliasing, destructuring, re-export, storage in variables or data structures, or passing to any function that is not a spec module's `text` export is invalid (14.18); passing a node to the `text` export of a different spec module is the cross-module call of 4.4 (14.11). Type-level references are unrestricted and record no edges.
+A marker and the argument to `text(...)` MUST each be a static property chain (2.4) rooted directly at a spec module import binding; the static argument rule applies in TypeScript equally (14.8). An expression statement that involves a spec module binding without being exactly such a chain is not a marker; it, like every other value-level use — aliasing, destructuring, re-export, storage in variables or data structures, or passing to any function that is not a spec module's `text` export — is invalid (14.18); passing a node to the `text` export of a different spec module is the cross-module call of 4.4 (14.11). Type-level references are unrestricted and record no edges.
 
 ### 4.6 Code locations and attribution
 
@@ -530,6 +530,7 @@ xspec query reachable --from <graph-node> --to <graph-node> [--kinds <kinds>]
 
 * Every command supports `--json`, emitting a single JSON document. Where this specification defines report content, the JSON form MUST contain the same information.
 * Every command supports `--config <path>` (7).
+* A flag MAY be given at most once per invocation; repeating a flag is a usage error. List-valued flags (`--kinds`) take one comma-separated value (11).
 * Arguments that name requirement nodes, graph nodes, workspace files, or file globs (`<node>`, `<graph-node>`, `<file>`, `--file`) are workspace-relative in the form of 1.5, independent of the working directory. `--config <path>` and `--test-hold <path>` are filesystem paths resolved against the working directory.
 * IDs, tags, identities, session names, and paths compare byte-wise and case-sensitively; no Unicode normalization or case folding is applied anywhere (the create-time session-name restriction of 10.1 is the sole exception).
 * All output, generated files, and stored data are byte-deterministic for identical input: no wall-clock values, no randomness, no absolute paths, no environment-dependent content.
@@ -545,7 +546,7 @@ Performs all build validations without accepting stale outputs, and additionally
 
 ### 12.3 `xspec ids`
 
-Lists requirement IDs grouped by file. Supports `--tree`, `--file <path>`, `--json`, and `--unreferenced`, which lists requirement nodes with no incoming dependency edges from specs or code (`contains` does not count). Unreferenced is not the same as uncovered: a node may be referenced yet uncovered by a given profile.
+Lists requirement IDs grouped by file, with `--json` per 12.0. `--tree` renders each file's IDs as a tree following section nesting instead of a flat list. `--file <glob>` restricts the listing to files the glob matches (the rules of 7, as in 11). `--unreferenced` restricts the listing to requirement nodes with no incoming dependency edges from specs or code (`contains` does not count); unreferenced is not the same as uncovered — a node may be referenced yet uncovered by a given profile.
 
 ### 12.4 `xspec show`
 
@@ -563,7 +564,7 @@ As specified in sections 8, 9, 10, 11, and 6.
 
 ### 13.1 Generated TypeScript
 
-`NAME.mdx` generates, in the source file's directory, the TypeScript module `NAME.xspec.ts`, beginning with the generated-file header (4), together with whatever companion files beside it are needed so that the specifier `./NAME.xspec` resolves for consumers: type checking (4.1), hover documentation and go-to-definition into the source `.mdx` (4.2), and runtime behavior (4.3–4.5) MUST all hold under standard TypeScript tooling with no xspec runtime dependency. The module and its companion files are derived files (13.4).
+`NAME.mdx` generates, in the source file's directory, the TypeScript module `NAME.xspec.ts`, beginning with the generated-file header (4), together with whatever companion files beside it are needed so that the specifier `./NAME.xspec` resolves for consumers: type checking (4.1), hover documentation and go-to-definition into the source `.mdx` (4.2), and runtime behavior (4.3–4.5) MUST all hold under standard TypeScript tooling with no xspec runtime dependency. Every companion file is named `NAME.xspec.` plus a suffix, so the module and all companions carry `.xspec.` in their names and are derived files under the source-discovery exclusion (13.4).
 
 ### 13.2 Markdown output
 
@@ -584,20 +585,20 @@ Derived-file paths belong to xspec: writing a derived file replaces whatever exi
 
 ### 13.5 Concurrency and isolation
 
-All state is workspace-local; instances operating on different workspaces MUST NOT interfere with each other. Within one workspace, every file write is atomic (a complete file appears or the old content remains). Commands that modify sources or durable files — `rename`, `move`, and the mutating `review` subcommands (`create`, `resolve`, `split`) — are mutually exclusive per workspace: while one runs, another MUST fail promptly with a usage error (12.0) without modifying anything, so concurrency never loses a journal append or a resolution. Exclusivity ends when the holding command's process terminates, normally or abnormally; a terminated holder MUST NOT block later commands. As a deterministic test seam for this exclusion, every mutating command accepts `--test-hold <path>`: immediately after acquiring workspace exclusivity and before modifying anything, the command creates an empty file at the given path, then proceeds normally only once that file has been deleted. If the hold file cannot be created, the command fails with a usage error (12.0) without modifying anything. The seam changes no other behavior and grants no access beyond the invoking user's own file permissions. All other commands may run concurrently, with last-write-wins per file; any resulting derived-file inconsistency is resolved by rerunning `xspec build`. A mutating command interrupted before completion can leave sources and durable files inconsistent; `xspec check` reports such states (14).
+All state is workspace-local; instances operating on different workspaces MUST NOT interfere with each other. Within one workspace, file writes are atomic in their observable effect: at every moment — concurrent readers and interrupted commands included — a path xspec writes holds either its prior state (the previous content, or absence) or the complete new content, never a partial write. Commands that modify sources or durable files — `rename`, `move`, and the mutating `review` subcommands (`create`, `resolve`, `split`) — are mutually exclusive per workspace: while one runs, another MUST fail promptly with a usage error (12.0) without modifying anything, so concurrency never loses a journal append or a resolution. Exclusivity ends when the holding command's process terminates, normally or abnormally; a terminated holder MUST NOT block later commands. As a deterministic test seam for this exclusion, every mutating command accepts `--test-hold <path>`: immediately after acquiring workspace exclusivity and before modifying anything, the command creates an empty file at the given path, then proceeds normally only once that file has been deleted. If the hold file cannot be created, the command fails with a usage error (12.0) without modifying anything. The seam changes no other behavior and grants no access beyond the invoking user's own file permissions. All other commands may run concurrently, with last-write-wins per file; any resulting derived-file inconsistency is resolved by rerunning `xspec build`. A mutating command interrupted before completion can leave sources and durable files inconsistent; `xspec check` reports such states (14).
 
 ## 14. Validation Errors
 
 `xspec build` and `xspec check` MUST report actionable errors that identify the file, location, and correction. When several error conditions are present, they MUST report each of them, not only the first; a condition goes unreported only where another error makes it undetectable — an unparseable file (14.20) masks the conditions inside itself, and a reference into it reports as unresolved (14.5–14.7) — and a configuration error (14.14) precedes all source analysis. The defined error conditions, each reported by `build` and `check` unless its entry states otherwise:
 
 1. Missing ID: a non-root section without `id`.
-2. Invalid structural ID: a child ID that does not equal the parent ID plus one segment, including IDs that skip levels; the error states the expected form.
+2. Invalid structural ID: a child ID that does not equal the parent ID plus one segment, including IDs that skip levels; the error states the expected form. A top-level section is checked against the empty prefix (exactly one segment). The check needs the parent's ID: for the immediate children of a section lacking `id`, condition 1 masks this condition — their other conditions, and this condition for their own children, report normally.
 3. Duplicate ID within a file.
 4. Invalid segment or tag: violation of 1.4.
 5. Unknown dependency: a `d` reference that does not resolve.
 6. Unknown text target: a `text(...)` reference that does not resolve.
 7. Unknown TypeScript reference: a marker or `text` call that does not resolve; this is also a type error against the generated module.
-8. Invalid argument: a dynamic `d` or `text(...)` argument, or a string-form `text(...)` argument in a TypeScript file (4.3).
+8. Invalid argument: a `d` or `text(...)` reference that is not static per 2.4, a `text(...)` call without exactly one argument, or a string-form `text(...)` argument in a TypeScript file (4.3).
 9. Cycle: a dependency cycle (with the full path) or a spec import cycle.
 10. Stale generated output: a derived file whose content does not match what the current sources and configuration generate, or a recorded derived file (13.3) remaining at a path the current sources and configuration no longer generate; the error names the file and instructs rebuilding. Reported by `check` only: `build` cannot observe staleness because it regenerates every derived file (12.1).
 11. Cross-module text call: a node passed to the `text` export of a spec module other than its own; additionally a TypeScript type error and a runtime throw per 4.4.
@@ -606,7 +607,7 @@ All state is workspace-local; instances operating on different workspaces MUST N
 14. Configuration error: missing or invalid configuration — missing required fields or invalid profile, rule, or group shapes; unknown group names referenced by profiles, rules, or selectors; ambiguous kinds (7.4, 7.5); an empty `edgeKinds`, `targetTags`, or selector `tags` list; a capture violation (7.5); a glob or `markdown.outDir` resolving outside the workspace root (7, 7.3); a file matched by both a spec and a code group. Reported by every command when it loads the configuration and discovers sources, as a usage error (12.0), not a finding.
 15. Invalid import: in an xspec source file, an import that is not a single default binding, does not designate an xspec source file belonging to a configured spec group, or binds the identifier `S`, `Spec`, or `text` (2.1); in a TypeScript file, a `.xspec` import that does not designate such a source, a spec-module binding other than the default and `text` exports, a dynamic `import()` whose static specifier ends in `.xspec`, or an import whose relative specifier designates a derived-file path other than through a spec module import's `.xspec` specifier (4, 13.4); in either kind of file, an import binding an identifier already bound by another import in the same file, when either import is a spec module import.
 16. Invalid construct: a JSX element other than `<S>`/`<Spec>`, an expression container other than a `text(...)` embedding or an MDX comment (2.7), or an export statement in a source file.
-17. Invalid prop: an unknown prop on `<S>`/`<Spec>`, an `id`, `coverage`, or `tags` value that is not a quoted-form static string literal (2.7), or a `coverage` value other than `required` or `none`.
+17. Invalid prop: an unknown or repeated prop on `<S>`/`<Spec>`, an `id`, `coverage`, or `tags` value that is not a quoted-form static string literal, a `d` value that is not a braced expression (2.7), or a `coverage` value other than `required` or `none`.
 18. Unsupported node usage: a spec module binding or node used in TypeScript other than as a dependency marker, a child property access, or a direct argument to a spec module's `text` export (a cross-module `text` argument is condition 11, not this one).
 19. Invalid source path: a discovered spec or code source file whose workspace-relative path contains `#`, or a spec-group file without the `.mdx` extension (7.1).
 20. Unparseable source: a spec-group file that is not well-formed MDX, a code-group file that is not well-formed TypeScript, or a discovered source file of either kind that is not valid UTF-8 or begins with a byte-order mark (1.6); the error reports the location of the parse failure.
