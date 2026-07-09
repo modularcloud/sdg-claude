@@ -8,7 +8,7 @@ Like PROCESS.md, this file must not be modified by agents running the process.
 
 - A git repository with a GitHub remote, push access, and GitHub Actions enabled.
 - `gh` CLI authenticated (PRs, code review comments, CI status).
-- A Claude Code environment supporting: subagents, **forked** subagents (`subagent_type: "fork"` — inherits the conversation history), and **SendMessage** continuation of a previously spawned agent with its context intact. If forks or SendMessage are unavailable, halt and tell Developer this environment cannot run the process as specified. (Claude Teammates is a legacy fallback for long-lived agent threads; with SendMessage continuation it is unnecessary.)
+- A Claude Code environment supporting: subagents, **forked** subagents — via `subagent_type: "fork"` where the harness registry offers that type, or via an untyped spawn on harnesses honoring `CLAUDE_CODE_FORK_SUBAGENT=1` (the scaffold's settings set it); either way the spawn must inherit the conversation history — and **SendMessage** continuation of a previously spawned agent with its context intact. If forks or SendMessage are unavailable, halt and tell Developer this environment cannot run the process as specified. (Claude Teammates is a legacy fallback for long-lived agent threads; with SendMessage continuation it is unnecessary.)
 - A sandboxed or disposable execution environment (Claude Code web/cloud, a container, or a VM). `.claude/settings.json` ships with `permissions.defaultMode: "bypassPermissions"`: the process runs long and unattended, and a wrongly-restricted permission set that silently stalls an agent is a worse failure here than broad permissions in a sandbox. Developers running on an unsandboxed machine should change that setting deliberately.
 
 ## 2. Role bindings
@@ -17,7 +17,7 @@ Like PROCESS.md, this file must not be modified by agents running the process.
 |---|---|---|
 | Developer | The human in the Claude Code chat | — |
 | — (Orchestrator) | The main conversation thread | Dumb process-stepper; owns no content work (§3) |
-| Liaison | **Forked** subagent: `Agent(subagent_type: "fork", prompt: "Read .claude/prompts/sdg-liaison.md and act as Liaison. <episode input>")` | Inherits full chat history at spawn time; sole reader/editor of `specs/PHILOSOPHY.md` |
+| Liaison | **Forked** subagent, prompt: `"Read .claude/prompts/sdg-liaison.md and act as Liaison. <episode input>"` — use `subagent_type: "fork"` if the registry offers it, else an untyped spawn (the scaffold sets `CLAUDE_CODE_FORK_SUBAGENT=1`, making untyped spawns fork). Liaison self-verifies inheritance and ERRORs if history is absent | Inherits full chat history at spawn time; sole reader/editor of `specs/PHILOSOPHY.md` |
 | Reviewer | `sdg-reviewer` agent | Fresh, one-shot; writes `specs/tmp/REVIEW.md` itself |
 | Driver | `sdg-driver` agent | Fresh per refinement iteration; pausable/continuable in-thread |
 | Engineer | `sdg-engineer` agent | Fresh per ralph-loop mission; never asks Developer |

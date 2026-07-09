@@ -2,7 +2,8 @@
   "model": "fable",
   "effortLevel": "xhigh",
   "env": {
-    "CLAUDE_CODE_EFFORT_LEVEL": "max"
+    "CLAUDE_CODE_EFFORT_LEVEL": "max",
+    "CLAUDE_CODE_FORK_SUBAGENT": "1"
   },
   "permissions": {
     "defaultMode": "bypassPermissions"
