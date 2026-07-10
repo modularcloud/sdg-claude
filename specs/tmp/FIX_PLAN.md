@@ -21,7 +21,6 @@ Planned 2026-07-10 from the Phase 9 iteration-1 compliance panel (TEST-SPEC.md a
 
 Each task implements exactly the named TEST-SPEC.md tests, to their full text (arms included). Default verification per Conventions.
 
-- [ ] **SUITE-12 — §4 preamble:** T4-1…T4-4 (generated-module header; the full TS import-rule 14.15 matrix incl. re-export forms, `import =`, dynamic import, derived-path specifiers, duplicate-binding collisions; aliased bindings; type-only imports record nothing). Needs HARNESS-05.
 - [ ] **SUITE-13 — §4.1–4.2:** T4.1-1…T4.1-3, T4.2-1…T4.2-4 (skeleton chains and type errors, readonly, opaque node values; doc comments with expanded own text, 1000-code-point truncation, `*\/` escaping, go-to-definition/hover — needs HARNESS-05 language-service queries).
 - [ ] **SUITE-14 — §4.3–4.4:** T4.3-1, T4.3-2, T4.4-1, T4.4-2 (`text(node)` runtime value + `embeds` edge; string/dynamic args → 14.8; cross-module branding type error 14.11 with runtime throw naming both modules; aliased `text` per module).
 - [ ] **SUITE-15 — §4.5:** T4.5-1…T4.5-7 (marker semantics and runtime harmlessness, root markers, static rule 14.8, shadowing, sanctioned-uses 14.18 matrix, `text` statement position, type-level freedom).
