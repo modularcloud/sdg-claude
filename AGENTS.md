@@ -7,6 +7,7 @@ Build, test, and run instructions for this repository (nothing else belongs in t
 - Build the product: `npm run build` — compiles `src/` (TypeScript ESM, `src/tsconfig.json`) to `dist/`; the `xspec` bin is `dist/cli/bin.js`. Run it: `node dist/cli/bin.js`.
 - Typecheck both programs: `npm run typecheck` (`src/tsconfig.json`, then `test/tsconfig.json`; the harness is not typechecked by Vitest at run time).
 - Full test suite (TEST-SPEC sections 1–17, certification included; the Linux CI leg): `npm test`. Build the product first — tests invoke the built executable.
+- Running tests also requires the system `git` executable on PATH: harness fixtures script local git repositories (`test/helpers/workspace.ts`). No git configuration is needed — the builder isolates all ambient git config and identity.
 - Harness self-tests and certification only (TEST-SPEC 17): `npm run test:self`.
 - Windows-leg subset (TEST-SPEC E-6; run by the Windows CI job): `npm run test:windows`.
 - Local-only suite (TEST-SPEC E-2; separately invocable, never run in CI, currently empty): `npm run test:local`.
