@@ -7,5 +7,9 @@
   "compilerOptions": {
     "noEmit": true
   },
-  "include": ["./**/*.ts"]
+  // fixtures/ is excluded: fixture projects are data the harness compiles or
+  // executes at test run time (e.g. the S-4 fixture contains a deliberate
+  // type error the tooling driver must detect), not harness program code.
+  "include": ["./**/*.ts"],
+  "exclude": ["fixtures"]
 }
