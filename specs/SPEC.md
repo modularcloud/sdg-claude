@@ -29,7 +29,7 @@ Every xspec source file has an implicit root section. The root section:
 * precedes every section of its file in document order
 * is the default export of the generated TypeScript module
 * is identified by the source file path alone (1.5)
-* is never a coverage target (8.1)
+* is never a coverage target (8.1) and never appears in a coverage path (8)
 
 ### 1.3 Requirement IDs
 
@@ -204,7 +204,7 @@ function printHello() {
 }
 ```
 
-A marker records a `references` edge from the enclosing code location to the node. At runtime, a marker is a harmless property read; markers MUST be valid with no additional tooling installed. A bare reference to the root node records a `references` edge to the root node only; because roots are never coverage targets, a root marker grants no coverage, but it makes the code location impacted by any change in the document that changes the root's subtreeHash or effectiveHash (9.2).
+A marker records a `references` edge from the enclosing code location to the node. At runtime, a marker is a harmless property read; markers MUST be valid with no additional tooling installed. A bare reference to the root node records a `references` edge to the root node only; because roots never participate in coverage paths (8), a root marker grants no coverage in any profile, but it makes the code location impacted by any change, in the document or upstream of it, that changes the root's subtreeHash or effectiveHash (9.2).
 
 A marker and the argument to `text(...)` MUST each be a static property chain (2.4) rooted directly at a spec module import binding; the static argument rule applies in TypeScript equally: a non-static bare reference in expression-statement position is, like a non-static `text(...)` argument, an invalid argument (14.8), not unsupported usage (14.18). Rooting is scope-aware: an identifier that TypeScript scoping resolves to a local declaration shadowing an import binding is not a spec module reference — a chain rooted at it records no edge and falls under none of these conditions. The sanctioned value-level uses are exact: a node — a default-export binding or a chain of child property accesses from it — appears only as a marker or as the sole argument of a call whose callee is a spec module's `text` export, and a `text` binding appears only as such a callee. That call is an ordinary expression, valid in expression-statement position too, where it records its `embeds` edge (4.3) and is not a marker. Any other value-level use of either binding — aliasing, destructuring, re-export, storage in variables or data structures, passing to any other function — is invalid (14.18); passing a node to the `text` export of a different spec module is the cross-module call of 4.4 (14.11). Type-level references are unrestricted and record no edges.
 
@@ -388,7 +388,7 @@ Violations are findings reported by `xspec check` — and only by `check`: `buil
 
 ## 8. Coverage
 
-Coverage is graph reachability over dependency edges, not proof of semantic correctness. A target requirement is covered for a profile when a permitted path exists from a boundary node to it: in `direct` mode a single edge, in `transitive` mode a path of one or more edges, using only the profile's `edgeKinds`. `contains` edges never grant coverage and never appear in coverage paths.
+Coverage is graph reachability over dependency edges between non-root participants, not proof of semantic correctness. A target requirement is covered for a profile when a permitted path exists from a boundary node to it: in `direct` mode a single edge, in `transitive` mode a path of one or more edges, using only the profile's `edgeKinds`. `contains` edges never grant coverage and never appear in coverage paths. Root nodes never appear in coverage paths either, in either mode — not as boundary node, intermediate, or target: a spec group serving as `boundary` contributes only its non-root requirement nodes as boundary nodes, and a dependency edge whose source or target is a root — a root-sourced `embeds` edge (2.3), or a `d`, `text(...)`, or marker reference targeting a root — never extends a covering path. This exclusion is coverage-scoped: roots remain nodes of their groups (8.2), and root-sourced and root-targeted dependency edges remain ordinary dependency edges for policy (7.5), impact (9.2), effectiveHash (5.5), and `query` (11).
 
 ### 8.1 Required set
 
