@@ -19,7 +19,6 @@ Planned 2026-07-10 from the Phase 9 iteration-1 compliance panel (TEST-SPEC.md a
 
 ## A. Harness machinery (`test/helpers/` + `test/self/`)
 
-- [ ] **HARNESS-09 — Glob/capture oracle + S-6 vectors.** Implement the in-harness glob and capture matching oracle for P-7: SPEC.md §7 grammar (`*`, `?`, `**`, byte-wise case-sensitive, dot-segment rule, every other character literal) and §7.5 captures (never `/`, never empty, left-to-right shortest match). Add its S-6 fixed vector suite derived from SPEC.md §7/§7.5 examples. Cites: §16 P-7, §17 S-6. Verify: S-6 glob/capture vectors pass.
 - [ ] **HARNESS-10 — Property-test infrastructure.** Implement seeded, reproducible generators with the failing seed reported on failure (H-10), shrinking on failure (§16), a fixed seed set used in CI, and an optional randomized local mode that reports seeds (E-5). Cites: §0 H-10, §16 preamble, §18 E-5. Verify: a demo property run under a fixed seed is reproducible; a forced failure reports its seed and shrinks.
 
 ## B. Product-facing suite (`test/suite/`) — expected red against the stub
