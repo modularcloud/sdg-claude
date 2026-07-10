@@ -21,7 +21,6 @@ Planned 2026-07-10 from the Phase 9 iteration-1 compliance panel (TEST-SPEC.md a
 
 Each task implements exactly the named TEST-SPEC.md tests, to their full text (arms included). Default verification per Conventions.
 
-- [ ] **SUITE-04 — §1.5:** T1.5-1…T1.5-3 (workspace-relative `/`-separated identities from any cwd; `#`/non-UTF-8 discovered paths → 14.19, Linux-leg staging; `path#id` vs bare `path` addressing). T1.5-1/T1.5-3 rerun on the Windows leg via CI-01.
 - [ ] **SUITE-05 — §1.6–1.7:** T1.6-1…T1.6-5, T1.7-1 (own vs subtree text byte anchors with the emission-independence parity arm; N+1 run counting; expansion everywhere; ownHash vs embedded-target edits; 14.20 encoding; zero-based byte-offset source ranges incl. self-closing and root arms).
 - [ ] **SUITE-06 — §2.1:** T2.1-1…T2.1-5 (valid imports, specifier-form and binding-form 14.15 matrices, unused import records no edges, import cycles 14.9).
 - [ ] **SUITE-07 — §2.2–2.3:** T2.2-1…T2.2-5, T2.3-1, T2.3-2 (`d` forms, module-as-target, duplicate collapse, empty array metadataHash parity, not rendered; `text(...)` embedding byte-asserted with `embeds` edge, string form, root targets).
