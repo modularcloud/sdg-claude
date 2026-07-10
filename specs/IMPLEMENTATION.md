@@ -48,7 +48,7 @@ Cross-cutting rules:
 - Same language and runtime as the product; same repository.
 - Test runner: Vitest.
 - Tests drive the product through its specified surfaces only: build a temporary workspace from fixture files, invoke the CLI, assert on stdout, stderr, exit code, and workspace file bytes.
-- CLI invocation is in-process through the `(argv, cwd, stdout, stderr)` entry by default (fast, debuggable); real subprocesses are used where process semantics are themselves under test — concurrency and `--test-hold` (SPEC 13.5) — and for bin smoke coverage.
+- CLI invocation is always as the `xspec` executable run in a subprocess, with controlled working directory, arguments, and environment (TEST-SPEC H-2) — in all cases, fast paths included. The product's `(argv, cwd, stdout, stderr)` entry (Architecture, above) is an implementation detail of the product, not a permitted test channel.
 - Type-level assertions (SPEC 4.1, 4.4) compile fixture consumer files with the TypeScript compiler API and assert on diagnostics; hover and go-to-definition (SPEC 4.2) are asserted through the language-service API; runtime behavior of generated modules (SPEC 4.3–4.5) runs under plain Node with no xspec dependency installed.
 - Byte-determinism (SPEC 12.0) is asserted with run-twice, compare-bytes helpers over outputs and written files.
 
