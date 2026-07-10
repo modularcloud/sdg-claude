@@ -1,0 +1,497 @@
+# xspec Test Specification
+
+This document is the source of truth for the xspec test harness. It specifies a blackbox, end-to-end test suite for every requirement in `specs/SPEC.md`, and the self-tests that establish confidence in the harness itself before any product code exists (red-green: the harness is implemented first and every product-facing test must fail against a missing or empty product without crashing the harness).
+
+The harness treats xspec strictly as a black box. Tests drive the product exclusively through the surfaces SPEC.md declares complete: the `xspec` command-line executable, the `xspec.config.ts` project configuration, the source-file syntax, the generated TypeScript modules (consumed only under standard TypeScript tooling), and the files xspec writes to the workspace. No test may observe, assume, or depend on implementation internals, and no statement in this document prescribes product code, program structure, libraries, or a test framework.
+
+Sections 1–15 of this document mirror sections 1–15 of SPEC.md one-to-one. Every normative statement in SPEC.md section *N* is covered by tests in section *N* here (cross-references are explicit where one test covers statements from several sections), so coverage can be verified requirement by requirement. Sections 16–18 define property-based/fuzz testing, harness self-testing and certification, and execution/CI requirements.
+
+Test case notation: each test has a stable ID `T<section>-<n>` (e.g. `T2.4-3`), a setup (workspace content), an action (commands run or consumer code compiled/executed), and expected observations. IDs are never reused; a withdrawn test's ID is retired. Where a test asserts an error, it MUST assert the exit code class (12.0) and that the report identifies the file/location/correction information SPEC.md §14 requires — not exact wording.
+
+There are currently no spec modules under `specs/modules/`; consequently there are no test modules. If a spec module `specs/modules/<NAME>.md` is added, a test module `specs/modules/TEST-<NAME>.md` MUST accompany it under the same rules as this document.
+
+xspec declares no external third-party hosted dependencies (SPEC.md: xspec performs no network access; git is read locally). There is therefore nothing to simulate or stub at a network boundary, and the entire suite MUST run without network access. Git-dependent tests construct local repositories inside the test workspace.
+
+## 0. Harness Requirements
+
+These requirements bind the harness implementation regardless of test framework choice (the framework itself is unspecified here and chosen by IMPLEMENTATION.md).
+
+* **H-1 Workspace isolation.** Every test constructs a fresh, self-contained workspace in a unique temporary directory: `xspec.config.ts`, source files, and (when needed) a local git repository with scripted commits. Tests share no mutable state. Two harness instances MUST be able to run concurrently on the same machine (unique temporary roots), satisfying SPEC.md 13.5 isolation from the observer side.
+* **H-2 Blackbox drive.** Tests invoke the `xspec` executable as a subprocess with controlled working directory, arguments, and environment, and observe: exit code, standard output, standard error, and workspace file state. Consumer-side contracts (generated modules, type errors, runtime behavior, hover/go-to-definition) are exercised by compiling and running small consumer TypeScript programs under standard TypeScript tooling with no xspec runtime dependency (SPEC.md 13.1). No other channel into the product exists.
+* **H-3 Output adapters.** SPEC.md fixes the information content of reports and JSON documents but not their concrete shape. Each command's assertions go through a thin decoding adapter that maps the product's actual output onto the information model this document asserts against (nodes, categories, counts, paths, findings, …). Adapters are the only place aware of concrete output shape; they may be adjusted to shape, never to values, and they MUST fail loudly (test error, not pass) when required information is absent. Human-readable reports are asserted only for required information (via robust matching), never exact wording.
+* **H-4 Byte assertions.** Where SPEC.md requires byte determinism or exact bytes (12.0 determinism, 3 Markdown output, 6.5 move edits, 13.4 stable ordering), tests assert byte equality. Where SPEC.md declares content opaque (journal entry content 6.1, graph data content 13.3), tests assert only the stated observable contract (location, line-orientation, append-only effect, refresh/staleness behavior) and MUST NOT pin opaque bytes across product versions — except for determinism checks comparing the product to itself.
+* **H-5 Exit codes and streams.** Every test asserts the exact exit code and, where relevant, the stdout/stderr separation of 12.0 (reports and findings on stdout; usage/configuration errors and diagnostics on stderr; with `--json`, stdout is exactly one JSON document or empty on exit-2).
+* **H-6 Determinism protocol.** Tests marked *determinism* run the same command twice (or rebuild the same workspace in two separate directories) and assert byte-identical outputs and written files, after normalizing nothing. Workspace-relative path rules (1.5) make this well-defined across directories.
+* **H-7 Traceability.** The harness maintains a machine-readable mapping from test ID to the SPEC.md subsection(s) it covers. A harness self-check (17) fails if any SPEC.md subsection 1.1–15 lacks at least one mapped test, or if a test maps to a nonexistent subsection.
+* **H-8 Red-green compatibility.** The full suite MUST be runnable when no product is installed (or against a deliberately empty stub): every product-facing test fails with a diagnosed assertion failure — never a harness crash, hang, or false pass. Self-tests (17) and certification MUST pass before the product exists.
+* **H-9 No skips.** A test that cannot run in GitHub CI is implemented as a local-only test, executed by the local suite; it is never marked skipped. The local-only set is currently empty (18).
+* **H-10 Time and randomness.** The harness introduces no wall-clock or randomness dependence into assertions; fuzz/property tests (16) use seeded, reproducible generators and report the seed on failure.
+
+## 1. Core Concepts
+
+### 1.1 Requirement section
+
+* **T1.1-1** Build a workspace with one file containing `<S id="login">…</S>`. `xspec query node specs/A.mdx#login` reports the node with its identity, text, hashes, and edges. Covers: a section becomes a requirement node.
+* **T1.1-2 Tag equivalence.** Two workspaces identical except one uses `<S>` and the other `<Spec>` (including nested and props-bearing sections): builds succeed; Markdown outputs are byte-identical; `query nodes` reports the same node set; generated modules expose the same skeleton; mixing both tag names in one file is valid.
+
+### 1.2 Implicit root
+
+* **T1.2-1** The root node is queryable by bare path (`query node specs/A.mdx`), has no `id`, and `query subtree specs/A.mdx` returns the root first, then every section of the file in document order.
+* **T1.2-2** The generated module's default export is the root node: a consumer passes the default export to `text()` and receives the entire compiled Markdown output of the file (subtree text of the root, 1.6/3).
+* **T1.2-3** Roots are never coverage targets: a profile with `targets: "all"` over a group never lists any root in required/covered/uncovered; a root is reported ignored with reason `root node` when in the target group (8.1, 8.2); `query nodes --coverage required` and `--coverage none` match no root; `query node` on a root reports the coverage attribute absent (11).
+
+### 1.3 Requirement IDs
+
+* **T1.3-1 Missing id.** A non-root section without `id` fails `build` with error condition 14.1 naming the file and location; exit 1.
+* **T1.3-2 Structural rule.** Valid nesting (`login` containing `login.validCredentials`) builds. Each invalid case from SPEC.md 1.3 fails with 14.2 and an error stating the expected form: `<S id="validCredentials">` nested inside `login`; `<S id="login.validCredentials">` nested inside `account`; top-level `<S id="auth.login">` with no enclosing `auth`.
+* **T1.3-3 Level skipping.** A child whose ID adds two segments (`a` containing `a.b.c` with no `a.b` section) fails with 14.2.
+* **T1.3-4 Top-level segment count.** A top-level section with a multi-segment ID fails; a one-segment top-level ID passes (checked against the empty prefix, 14.2).
+* **T1.3-5 Duplicate IDs.** Two sections with the same ID in one file fail with 14.3; the same ID in two different files is valid (uniqueness is per file, identities differ by path, 1.5).
+* **T1.3-6 Missing-id masking.** A section lacking `id` with children: the immediate children report no 14.2 (masked by 14.1), while their other conditions and the grandchildren's structural checks still report (14.2 masking note).
+
+### 1.4 ID segments and tags
+
+* **T1.4-1 Segment validity matrix.** For each rule, a workspace differing only in one segment: empty segment (`a..b` spelled via nesting, and a lone empty `id=""`), `"#"` in a segment, each whitespace character U+0009 U+000A U+000B U+000C U+000D U+0020, each control-character class representative (U+0000, U+001F, U+007F), and each forbidden name `$`, `__proto__`, `prototype`, `constructor`, `then` — all fail with 14.4.
+* **T1.4-2 Exact character classes.** Segments containing U+00A0, U+0085, and U+2028 are valid (SPEC.md 1.4 excludes them from both classes); builds succeed and the nodes are queryable by identity.
+* **T1.4-3 Non-identifier segments.** A segment like `login-v2` is valid; the generated module exposes it via bracket notation (2.4/4.1): a consumer using `SPEC["login-v2"]` type-checks and resolves; dot access to it is a type error.
+* **T1.4-4 Tags.** A tag containing `.` is valid; a tag containing `#`, whitespace-only, a forbidden name, or a control character is invalid (14.4). Same-character-class boundaries as T1.4-2 apply to tags.
+
+### 1.5 Node identity
+
+* **T1.5-1** Identities in every output (`query`, `show`, `ids`, coverage, impact) are workspace-relative and `/`-separated, regardless of the working directory the command runs from (run from a nested directory and from the root; compare outputs byte-wise).
+* **T1.5-2** A discovered source file whose path contains `#` fails with 14.19.
+* **T1.5-3** `path#id` addresses a section and bare `path` addresses the root across `query node`, `show`, and `move`/`rename` arguments.
+
+### 1.6 Own text, subtree text, and own content
+
+* **T1.6-1 Subtree vs own text.** For a parent with interleaved prose and two children, `query node` reports: subtree text equal to the section's contribution to compiled Markdown (children interleaved at their document positions), and own text equal to the subtree text with each child's contribution excised, runs joined exactly at excision points. Verified byte-wise against the workspace's expected compiled output.
+* **T1.6-2 Run counting.** N child constructs produce N+1 own-text runs including empty ones: adjacent children with no bytes between them, a child at the very start, and a child at the very end of the section — own text for these cases matches exact expected bytes.
+* **T1.6-3 Expansion everywhere.** With `{text(...)}` embeddings present, own and subtree text reported by `query`, `show`, and review payloads (10.2, 10.7) carry the embedded text fully expanded, and `text(node)` at runtime (4.3) returns expanded subtree text.
+* **T1.6-4 Own content vs expansion.** Editing the target of an embedding changes the target's hashes but not the embedder's ownHash or subtreeHash (asserted via `query node` hashes before/after and via impact categories: embedder is `upstream-changed`, not `changed`; 5.5).
+* **T1.6-5 Encoding.** A spec or code source that is invalid UTF-8, or begins with a BOM, fails with 14.20. Code-point counting is exercised in T4.2-2.
+
+## 2. Source Syntax
+
+### 2.1 Imports
+
+* **T2.1-1 Valid import.** `import BASE from "./BASE.xspec"` where `BASE.mdx` is a discovered file of a configured spec group: builds; references through the binding resolve.
+* **T2.1-2 Specifier forms.** `../` specifiers resolve against the importing file's directory. Invalid specifiers each fail with 14.15: absolute or bare (non-relative) specifier; relative specifier not ending in `.xspec`; specifier designating a file that exists but is not a discovered source of any configured spec group.
+* **T2.1-3 Binding forms.** Named import, namespace import, and side-effect-only import from a `.xspec` specifier each fail with 14.15. Two imports binding the same module under different names are valid; two imports binding the same identifier fail; an import binding `S`, `Spec`, or `text` fails (14.15).
+* **T2.1-4 Unused import.** An import whose binding is never used builds successfully and records no edges (`query edges --from` the file's nodes shows none from it).
+* **T2.1-5 Import cycles.** A two-file spec import cycle fails with 14.9 even when no requirement-level dependency cycle exists; a file importing itself fails as a length-one import cycle.
+
+### 2.2 Dependency prop
+
+* **T2.2-1 Forms.** Single external reference, single local string, array mixing both: each records `depends` edges observable via `query edges --kinds depends`.
+* **T2.2-2 Module-as-target.** `d={BASE}` (bare imported module) records a `depends` edge to `BASE`'s root node.
+* **T2.2-3 Duplicates collapse.** `d={[BASE.a.b, BASE.a.b, "x.y", "x.y"]}` records exactly one edge per target (5.2).
+* **T2.2-4 Empty array.** `d={[]}` builds identically to omitting the prop: no edges; metadataHash equals the omitted-prop variant's.
+* **T2.2-5 Not rendered.** Markdown output contains no trace of the `d` prop (3).
+
+### 2.3 Embedding requirement text
+
+* **T2.3-1** `{text(BASE.auth.login)}` replaces the expression with the target's compiled subtree text in Markdown output (byte-asserted) and records an `embeds` edge from the containing section.
+* **T2.3-2** String form `{text("local.requirement")}` resolves within the same file; both forms may target any depth, including embedding a whole file via the module binding (root target).
+
+### 2.4 Static argument rule
+
+* **T2.4-1 Static accepted forms.** Double- and single-quoted string literals; property chains with dot access and computed access via static string literal (`BASE["login-v2"]`), including mixed chains — all build.
+* **T2.4-2 Dynamic forms rejected.** Each fails with 14.8, in `d` and in `text(...)`, in MDX: template literal argument; identifier or call as index; optional chaining; non-null assertion; parenthesized chain; conditional expression.
+* **T2.4-3 Arity.** `text()` with zero and with two arguments fails with 14.8.
+
+### 2.5 Coverage attribute
+
+* **T2.5-1 Default.** A non-root node without the attribute is coverage-required: appears in a profile's required set (8.1); `query nodes --coverage required` lists it.
+* **T2.5-2 `coverage="none"`.** The node is excluded from coverage targets (reported ignored with its reason, 8.2), can still be a `d` target, still appears in impact reports when changed, and its children remain coverage-required (each observable in one workspace).
+* **T2.5-3 Values.** `coverage="required"` is accepted and behaves as the default; any other value fails with 14.17.
+
+### 2.6 Tags
+
+* **T2.6-1 Splitting.** `tags="a b"`, runs of mixed whitespace characters (1.4) as separators, and leading/trailing whitespace all yield tags `{a, b}` (asserted via `query node` and `query nodes --tag`).
+* **T2.6-2 Duplicates and empty.** Duplicate tags collapse; `tags=""` and whitespace-only values behave as omitted (metadataHash equals omitted variant).
+* **T2.6-3 Semantics.** Tags do not render into Markdown; a child does not inherit its parent's tags; tags select in coverage `targetTags` (7.4) and policy `tags` selectors (7.5).
+
+### 2.7 Permitted constructs
+
+* **T2.7-1 Foreign constructs.** A JSX element other than `<S>`/`<Spec>`, an expression container other than `text(...)` or an MDX comment, and an export statement each fail with 14.16.
+* **T2.7-2 Comments.** An MDX comment inside a section: absent from Markdown output; not part of own text (`query node`); editing or deleting only the comment produces no change categories against a baseline and changes no hash.
+* **T2.7-3 Props.** Repeated props (defined or unknown) fail with 14.17; unknown props fail with 14.17; `id={"login"}` (braced form) fails with 14.17; quoted (`d="x"`) or valueless `d` fails with 14.17; braced `d` holding a non-reference expression (e.g. a number, an object literal) fails with 14.8.
+
+## 3. Markdown Compilation
+
+All tests here run with `markdown: { emit: true }` and byte-assert emitted files.
+
+* **T3-1 Removals.** Imports, `<S>`/`<Spec>` opening and closing tags with all their props, and MDX comments are removed by exact textual deletion in place; all other Markdown content and author whitespace is preserved byte-for-byte (fixture with tables, code fences, trailing spaces, blank lines).
+* **T3-2 Replacement.** Each `text(...)` expression is replaced by the target's compiled subtree text, fully expanded through chained embeddings (A embeds B embeds C).
+* **T3-3 Line-drop rule.** A line that contained non-whitespace in the source and is left empty or whitespace-only purely by removals is dropped with its terminator: covers a line holding only an import; a line holding only an opening tag; a line holding only a closing tag; a line holding only a comment; a line holding only a `text(...)` whose expansion is empty. Counter-cases: a line that was already empty in the source is kept; a line keeping any content keeps its terminator; a removal-affected line that retains other content is kept.
+* **T3-4 Line terminators.** CRLF, lone LF, and lone CR terminators are each recognized as one terminator by the drop rule; a final line without a terminator survives compilation without gaining one (byte-asserted fixtures for each).
+* **T3-5 In-line tags.** `<S id="a">Example:</S><S id="b">1. A</S>` compiles to `Example:1. A` (transparent annotations; author responsibility for spacing).
+* **T3-6 Emission scope.** With `markdown` absent or `emit: false`, no `.md` file is emitted for any source (7.3); with `emit: true` every discovered spec source emits (13.2).
+
+## 4. Generated TypeScript Modules
+
+Consumer programs in this section are compiled and run under standard TypeScript tooling only (13.1); type-error assertions assert that compilation fails and the failing location is the consumer reference under test.
+
+* **T4-1 Header.** Each generated module begins with a header identifying it as generated by xspec from its source file (asserted as: header present, mentions xspec and the source path — wording free).
+* **T4-2 TS import rules.** In code-group files, each fails with 14.15: importing a `.xspec` specifier that designates no discovered spec source; binding anything other than the (optionally aliased) default and `text` exports; a dynamic `import()` with a static `.xspec` specifier; an import whose relative specifier designates a derived-file path other than through `.xspec` (`./NAME.xspec.ts` directly; a path under `.xspec/`; a configured Markdown emit destination — the last only while emission is enabled, 7.3). A dynamic `import()` with a non-static specifier is not analyzed: build succeeds, no edges recorded.
+* **T4-3 Aliased bindings.** `import SPEC, { text as t } from "./NAME.xspec"` works: `t(SPEC.a)` returns text and records the edge.
+
+### 4.1 Node skeleton
+
+* **T4.1-1** The default export is the root; child sections appear as properties named by ID segment; a consumer chain to a leaf type-checks; a chain naming a missing requirement path is a TypeScript type error against the generated module.
+* **T4.1-2 Readonly.** Assigning to a node property is a type error.
+* **T4.1-3 No text as values.** Every node reachable by child property access is an opaque token, not a string: for each node in a fixture, the runtime value obtained by the supported child-access operation is not a string and is accepted by `text()`; requirement text is obtainable at runtime only via the `text` export (a consumer that never imports `text` and only performs markers runs successfully and never observes requirement text through the module's values — asserted on the values reachable by supported operations).
+
+### 4.2 Documentation and navigation
+
+* **T4.2-1 Doc comments.** The generated module carries, for every node, a documentation comment containing the node's own text (fixture with expanded embedding to confirm own text is the expanded value, 1.6).
+* **T4.2-2 Truncation.** A node whose own text exceeds 1000 Unicode code points (containing multi-code-unit characters, e.g. emoji, to distinguish code points from UTF-16 units and bytes) is truncated to exactly its first 1000 code points with `…` appended; a node at exactly 1000 code points is not truncated and gains no `…`.
+* **T4.2-3 Escaping.** Own text containing `*/` appears in the comment with each occurrence written `*\/`, and the generated module still parses under standard tooling.
+* **T4.2-4 Navigation.** Under standard TypeScript language tooling, go-to-definition on a consumer's node reference resolves into the source `.mdx` file at the corresponding `<S>` section; hover on the reference shows the documentation (asserted via the tooling's definition/hover queries).
+
+### 4.3 text
+
+* **T4.3-1** `text(node)` returns the node's subtree text as a `string` at runtime (byte-compared to expected expansion) and records an `embeds` edge from the calling code location to the node (`query edges`).
+* **T4.3-2** A string argument to `text` in a TypeScript file fails with 14.8.
+
+### 4.4 Module branding
+
+* **T4.4-1** Passing a node from module A to module B's `text` export: TypeScript type error (14.11); when compiled with the error suppressed at the consumer's responsibility (or executed via the emitted JS), the call throws at runtime with an error identifying both A (the node's module) and B (the called module).
+* **T4.4-2** Consuming two spec modules in one file with aliased `text` imports: each alias accepts only its own module's nodes.
+
+### 4.5 Dependency markers
+
+* **T4.5-1 Marker semantics.** A bare requirement reference as an expression statement records a `references` edge from the enclosing code location; at runtime the program behaves as if the line were absent (harmless property read) with no additional tooling installed.
+* **T4.5-2 Root marker.** A bare reference to the default export records a `references` edge to the root; it grants no coverage in any profile (roots never targets), but the code location is impacted (9.2) by an edit anywhere in the document.
+* **T4.5-3 Static rule in TS.** A non-static bare reference in expression-statement position (computed index by variable, optional chaining, etc.) fails with 14.8 (invalid argument, not 14.18).
+* **T4.5-4 Shadowing.** A local declaration shadowing the import binding: chains rooted at the local are not spec references — no edge, no error, program builds.
+* **T4.5-5 Sanctioned uses only.** Each fails with 14.18: aliasing a node to a variable; destructuring the module; re-exporting the binding; storing a node in an array/object; passing a node to a function other than a spec module's `text` export; using `text` as a value (passing/storing it) other than as a callee.
+* **T4.5-6 text in statement position.** A `text(...)` call as an expression statement is valid, records an `embeds` edge, and is not a marker (kind asserted via `query edges --kinds`).
+* **T4.5-7 Type-level freedom.** `typeof SPEC.a.b` and other type-level references build with no edges recorded and are not rewritten by rename (see T6.4-5).
+
+### 4.6 Code locations and attribution
+
+* **T4.6-1 Attribution.** Markers placed: at file top level → attributed to the file (`path`); inside a function declaration, a class method, a getter, a setter, a property with arrow-function initializer, a variable-initialized arrow function, a namespace, and a named default export → attributed to `path#unit` with the dot-joined chain, outermost first (nested cases like `Class.method` and `ns.fn` asserted).
+* **T4.6-2 Anonymous default.** A marker inside an anonymous default-exported function is attributed to `path#default`.
+* **T4.6-3 Not named units.** Markers inside an IIFE, a function stored via destructuring, and a computed-name class member attribute to the nearest enclosing named unit or the file.
+* **T4.6-4 Duplicate chains.** A getter/setter pair and two same-named declarations in sibling scopes: second occurrence in document order is `path#unit@2` (1-based), asserted via `query edges`/coverage boundary membership.
+
+## 5. Workspace Graph
+
+### 5.1–5.2 Node and edge kinds
+
+* **T5.2-1** One workspace exercising all four kinds: `contains` from document structure, `depends` from `d`, `embeds` from MDX `text(...)` and from TS `text(...)`, `references` from a marker — `query edges` reports each with correct source, target, kind; duplicates within a kind collapse (asserted for each dependency kind).
+
+### 5.3 Cycles
+
+* **T5.3-1** `check` detects and reports, with the full cycle path: a `depends` cycle A→B→A across files; a mixed cycle through `contains` + `embeds`; a self-`depends` (length one); a self-`embeds`; a section depending on its own ancestor; a section embedding its own ancestor. Exit 1.
+* **T5.3-2** `build` also rejects dependency cycles (14.9 is a build-and-check condition).
+
+### 5.4 Reference canonicalization
+
+* **T5.4-1 Reintroduced identity.** Rename `a`→`b`, then author a new section `a`: impact against the pre-rename baseline reports old-`a` (now `b`) unchanged and new-`a` as added; the dependent of old-`a` (rewritten to `b`) shows no `upstream-changed`. Distinct nodes never alias through a reused identity.
+* **T5.4-2 Spelling never hashes.** Rewriting a reference between equivalent spellings (dot ↔ computed access of the same target, local string ↔ imported form via a move) leaves the referencing node's hashes unchanged when performed by rename/move (6.2), and manual re-spelling of a reference (same target, different static form) changes no hash (rebuild and compare `query node` hashes).
+
+### 5.5 Hashes
+
+* **T5.5-1 Reporting and determinism.** `query node` reports all four hashes; rebuilding the identical workspace in a fresh directory yields identical hashes (H-6).
+* **T5.5-2 ownHash.** Changes when: an own-text run is edited; a child is added; removed; two byte-identical children are reordered; an embedded reference is added; removed; retargeted; repositioned between runs. Unchanged when: a child's text is edited (only child's hashes change); an embedded target's text is edited.
+* **T5.5-3 subtreeHash.** Changes exactly under the 5.5 conditions: any descendant added/removed/reordered or any in-subtree own-content change; unchanged for sibling-subtree edits and for embedded-target edits outside the subtree.
+* **T5.5-4 effectiveHash.** Changes when a dependency edge (any of the three kinds) is added, removed, or retargeted anywhere in the subtree; when a dependency target's effectiveHash changes (transitively); and on retarget between two targets that have equal effectiveHash (byte-identical twin targets fixture). Unchanged when an unrelated node changes.
+* **T5.5-5 metadataHash.** Changes iff `d` target set, `coverage`, or tags change; embedded `text(...)` references do not affect it; root nodes have a metadataHash (computed from empty inputs) reported by `query node`.
+* **T5.5-6 Purity link.** Journaled rename and file move change no hash on any node (see T6.2-1/2; asserted via full-workspace hash comparison).
+
+### 5.6 Change categories
+
+All category tests run `impact --base <ref>` against a committed baseline and assert categories with attribution (9.1).
+
+* **T5.6-1 Leaf edit.** Exactly per SPEC.md's worked example: leaf `changed`; every ancestor `descendant-changed` attributed to the leaf; sibling subtrees uncategorized; dependents of nodes on the path and those dependents' ancestors `upstream-changed`, attributed to the leaf.
+* **T5.6-2 Child add/remove.** Added child C `changed`; removed child reported as deleted and `changed`; parent P `changed` and `descendant-changed` attributed to C; P's ancestors `descendant-changed` attributed to P and C; upstream cascade as in T5.6-1.
+* **T5.6-3 d-target edit.** Adding/removing `d` targets on D: D `metadata-changed`; no node `changed` or `descendant-changed`; every node whose effectiveHash changed (D's ancestors, dependents, their ancestors, transitively) `upstream-changed` attributed to D.
+* **T5.6-4 coverage/tags-only edit.** Changes only metadataHash of the node: node `metadata-changed`; no other node receives any category.
+* **T5.6-5 Multiple flags.** A node that is simultaneously `changed` and `upstream-changed` (own edit plus dependency-target edit) carries both categories.
+
+## 6. Identity Continuity
+
+### 6.1 The journal
+
+* **T6.1-1 Lifecycle.** No journal file exists after `build` in a fresh workspace; the file appears at `.xspec/journal` with the first `rename`/`move`; each subsequent operation appends exactly one line-oriented entry and rewrites nothing above it (byte-prefix asserted); `build`, `check`, `coverage`, `impact`, `review`, `query` never modify it (byte-compare around each).
+* **T6.1-2 Determinism.** The same operation on the same workspace state (two identical directories) appends byte-identical entries.
+* **T6.1-3 Integrity.** `check` reports a malformed journal (garbage line), naming the line, with 14.13; a journal path occupied by a directory or symbolic link is a journal error (14.13).
+
+### 6.2 Identity guarantee
+
+* **T6.2-1 Rename purity.** After `xspec rename`, every node's four hashes are byte-identical to before (full-workspace sweep) and `impact --base <pre-rename ref>` reports no change categories.
+* **T6.2-2 File-move purity.** Same assertions for `xspec move old.mdx new.mdx`; identities change only in their file part.
+* **T6.2-3 Section move impurity.** `xspec move a.mdx#x b.mdx#y`: every node of the moved subtree keeps ownHash, subtreeHash, metadataHash; origin parent and target parent are each `changed` with ordinary cascades attributed to them; no other node is `changed`.
+* **T6.2-4 Same-parent final-position move.** Moving a parent's last child onto itself (same parent, same final position, new ID): changes no hash and is pure in effect (no categories) apart from the identity mapping.
+
+### 6.3 Baseline resolution
+
+* **T6.3-1 Config at ref.** A baseline where the configuration had different group membership: baseline graph reflects the old configuration (a file added to a group since then is absent from the baseline side).
+* **T6.3-2 Absent journal.** A baseline predating the journal file resolves normally (an absent journal reads as empty, and an empty journal is a prefix of every journal); a current workspace whose journal file is absent while the baseline's journal is non-empty reads as empty on the current side and fails as a prefix violation (T6.3-4).
+* **T6.3-3 Replay and composition.** Rename a→b, commit, rename b→c: impact with the older baseline maps a→c through composed entries and reports no changes.
+* **T6.3-4 Failures.** Each fails with an actionable error naming the offending entries or files, as a usage error (exit 2, 12.0): a baseline journal that is not a prefix of the current journal (simulate by rewriting history/journal in the fixture); a baseline whose sources fail parse/validation; an unresolvable ref.
+
+### 6.4 Rename
+
+* **T6.4-1 Rewrites.** Renaming a mid-tree ID rewrites: its `id`, all descendant `id`s by prefix replacement, local string references, external chain references in other files, `text(...)` targets in MDX and TS, and TS markers — workspace builds and all edges retarget (query-asserted); mapping appended to journal.
+* **T6.4-2 Minimal edits.** Quote style (single vs double) and access form (dot vs computed) of untouched reference parts are preserved byte-wise; only the affected parts change. Where the form cannot be kept: a new segment that is not a TS identifier is written as double-quoted computed access; a valid-identifier segment as dot access; string literals double-quoted.
+* **T6.4-3 Validation refusals (exit 1).** New ID invalid (1.4); equal to old; colliding with an existing ID; violating structural parent rules. Each refusal modifies nothing (workspace byte-compare).
+* **T6.4-4 Usage errors (exit 2).** Nonexistent `<file>`; nonexistent old ID. Checked before source validation: same exit 2 even when the workspace also has unrelated validation errors (12.0 ordering); but an old ID inside an unparseable origin file is masked — validation findings reported, exit 1.
+* **T6.4-5 Type-level references.** A `typeof`-level reference to the old identity is not rewritten; the workspace stays xspec-valid (the consumer type error is outside xspec's validations — `build` and `check` report no finding for it).
+* **T6.4-6 Valid-workspace precondition.** With a pre-existing validation error elsewhere, rename refuses (exit 1) before modifying anything.
+* **T6.4-7 Finishing regeneration.** After a successful rename, generated modules, Markdown output, and graph data are byte-identical to a fresh `build` of the rewritten sources; `check` immediately after reports no staleness (14.10).
+
+### 6.5 Move
+
+* **T6.5-1 File form.** IDs unchanged; identities change file part only; the moved file's own import specifiers and other files' imports of its generated module are rewritten so everything resolves; journal appended; finishing regeneration as T6.4-7.
+* **T6.5-2 Section form text edits.** Byte-exact fixtures: moved text spans opening tag's first character through closing tag's last; origin deletion drops lines left empty/whitespace-only (rule of 3); insertion immediately before the target parent's closing tag (or end of file for top-level `new-id`), followed by U+000A and preceded by one when not at line start; target file created when absent; no other byte changes beyond the specified rewrites.
+* **T6.5-3 Re-identification and reference conversion.** Subtree re-identified by prefix replacement; references convert between local and imported forms; needed spec imports are added binding fresh, non-colliding identifiers and unneeded ones removed; rewritten content is byte-deterministic (two identical fixtures produce identical bytes).
+* **T6.5-4 Refusals (exit 1, nothing modified).** A move creating a spec import cycle; creating a dependency cycle; file form whose destination exists; section form whose target parent is missing; whose target parent lies within the moved subtree; destination path in no configured spec group; in a code group as well; containing `#`; lacking `.mdx`. Plus the valid-workspace precondition as T6.4-6.
+* **T6.5-5 Usage errors (exit 2).** Nonexistent origin file or origin ID, ordering as T6.4-4.
+
+### 6.6 Manual restructuring
+
+* **T6.6-1** Renaming an ID by editing the file directly: no journal entry; impact reports a deletion plus an addition (not continuity); dependents referencing the old identity fail validation (14.5) until rewritten.
+
+## 7. Project Configuration
+
+* **T7-1 Location.** Configuration found by upward search from a nested working directory; `--config <path>` (resolved against the working directory, 12.0) overrides the search; no configuration reachable → configuration error (14.14, exit 2).
+* **T7-2 Declarative form.** Each fails with 14.14 (exit 2): missing `defineConfig` import; import from a specifier other than `"xspec"`; extra statements; a non-literal argument (spread, computed key, template literal, identifier reference, function call, number where boolean expected); a default export that is not one call to the (optionally aliased) binding. An aliased `defineConfig` import is valid.
+* **T7-3 Keys.** `specs` missing → 14.14. Omitting `code`, `markdown`, `coverage`, `policy` yields no code groups / no emission / no profiles / no rules respectively (each observable). Unknown keys at top level, in `markdown`, in a profile, in a rule, and in a selector each → 14.14.
+* **T7-4 Globs.** Semantics fixtures: `*` within one segment (matches empty run); `?` exactly one character; `**` whole segments including none; case-sensitive matching; a dotfile matched only by a pattern segment written with a leading `.`; a pattern resolving outside the workspace root → 14.14. All paths resolve relative to the configuration file's directory.
+* **T7-5 Symbolic links.** A symlinked file matched by a glob is not discovered; a symlinked directory is not traversed (contents undiscovered); broken links ignored; a symlink cycle does not hang discovery; workspace-external content behind a link never enters the discovered set.
+* **T7-6 Discovery boundaries.** Derived files are never discovered as sources even when globs match them (`.xspec.` names, `.xspec/` paths, Markdown emit destinations while emission is enabled, 13.4); an import never adds an unmatched file to the workspace (2.1: the target must already be discovered, else 14.15); a group with no matches and an empty `specs`/`code` map are valid with zero sources.
+* **T7.1-1 Spec groups.** A file in two spec groups is valid (and coverage/policy see it in both); a spec-group match without `.mdx` → 14.19.
+* **T7.2-1 Code groups.** Code groups act as coverage boundaries and the impacted-code population (asserted in 8/9); a file matched by both a spec and a code group → 14.14.
+* **T7.3-1 Markdown config.** `markdown` absent → no emission; `emit: false` → none; `emit: true` → emission next to each source; `outDir` redirects preserving workspace-relative paths; `outDir` resolving outside the root → 14.14; emit-destination classification follows `emit` (with emission off, a path that would be a destination can be a discovered source; with it on, it cannot — 7.3/13.4, asserted via discovery and via the import rule of T4-2).
+* **T7.4-1 Profile validation.** Unknown `target` group name → 14.14; empty `targetTags` → 14.14; empty `edgeKinds` → 14.14; `boundaryKind` required when the boundary name is both a spec and a code group (absent → 14.14) and inferred when unambiguous; unknown profile name at `coverage <name>` → usage error (12.0).
+* **T7.4-2 Profile semantics.** `targets` defaults to `"leaves"`; `"all"` includes internal nodes; `targetTags` restricts to nodes carrying at least one listed tag; `edgeKinds` defaults to all three and restricts paths when given (each via coverage runs, 8).
+* **T7.5-1 Rule validation.** Empty `kinds` → 14.14; empty selector `tags` → 14.14; a selector with zero or two of `group`/`files`/`tags` → 14.14; ambiguous group name without `kind` → 14.14; `to` referencing a capture absent from `from` → 14.14.
+* **T7.5-2 forbidden.** An edge whose source matches `from` and target matches `to` is a finding of `check` (rule name + offending edge, exit 1); non-matching edges are not; `kinds` restricts which edges are evaluated.
+* **T7.5-3 allowedOnly.** Every edge from a `from`-matching source must have a `to`-matching target; each violating edge is a separate finding.
+* **T7.5-4 Selectors.** `group` (with `kind` where needed) matches nodes of spec groups and code locations of code groups; `files` matches by glob; `tags` matches nodes carrying at least one listed tag.
+* **T7.5-5 Captures.** `$1-$2.ts` against `a-b-c.ts` captures `a` and `b-c`; `*$1*` against `abc` captures `a`; a capture never matches `/` or the empty string; a `to` with captures matches only when expansions agree (mirror-structure policy fixture passes for agreeing pairs, violates for disagreeing ones); left-to-right shortest-match disambiguation is deterministic (repeat runs identical).
+* **T7.5-6 build vs check.** `build` succeeds and regenerates output on a workspace full of policy violations (12.1); only `check` reports them (14.12).
+
+## 8. Coverage
+
+* **T8-1 Direct mode.** A single dependency edge from a boundary node to the target covers it; a two-edge path does not.
+* **T8-2 Transitive mode.** A multi-edge path covers; `edgeKinds` restriction breaks coverage when the path uses an excluded kind; `contains` edges never grant coverage and never appear in reported paths (fixture where the only connection is via `contains`: uncovered).
+* **T8-3 Boundaries.** A spec-group boundary (spec→spec edges) and a code-group boundary (marker/`text` edges from code) each grant coverage (`boundaryKind` both inferred and explicit).
+* **T8.1-1 Required set.** One workspace asserting: group restriction; `targetTags` restriction; `"leaves"` vs `"all"`; `coverage="none"` exclusion; root exclusion.
+* **T8.2-1 Report.** All profiles run by default; `coverage <name>` runs one; counts of required/covered/uncovered/ignored; identity of every covered, uncovered, and ignored node; one shortest covering path per covered node with the 12.0 tie-break (fixture with two equal-length paths asserts the byte-least one); ignored nodes report all applicable reasons in the fixed order (a node that is simultaneously `coverage="none"`, non-leaf, and untagged); `--check` exits 1 iff any required node is uncovered (0 otherwise); `--json` carries the same information (adapter-asserted equality of information).
+
+## 9. Impact Analysis
+
+* **T9-1 Baseline plumbing.** `impact --base <ref>` on a git fixture: reconstructs baseline per 6.3 (config-at-ref and journal replay covered by T6.3-*); exits 0 with differences and without (informational); `--json` available.
+* **T9.1-1 Categories.** Requirement-level output equals the categories and attributions of 5.6 (fixtures shared with T5.6-*).
+* **T9.2-1 Directly impacted.** A code location with an impact edge (in either graph) to a node whose subtreeHash changed is directly impacted: covers a `references` edge to an edited node, an `embeds` edge to a node with an edited descendant, an edge present only in the baseline (marker deleted), and an edge present only in the current graph (marker added). Added/deleted nodes count as changed in both hashes.
+* **T9.2-2 Transitively impacted.** A location whose impact-edge target changed only in effectiveHash (upstream dependency edit) is transitively impacted, not directly.
+* **T9.2-3 Deleted code location.** A code location absent from the current graph is reported under its baseline identity.
+* **T9.3-1 Ancestor collapsing.** A maximal chain of ancestors whose only category is `descendant-changed` with identical attribution appears as one entry covering the chain; an ancestor that additionally carries another category (or different attribution) breaks the chain.
+* **T9.3-2 Witness edge and path.** For each impacted location: the reported path runs from the edge's target to a node whose own edit explains the change; on a direct path every node's subtreeHash changed and every step is `contains`; on a transitive path every node's effectiveHash changed; edge and path minimize together over all qualifying edges (fixture with a shorter path through a second edge); ties by 12.0 byte-least sequence; when `embeds` and `references` both target the chosen first node, `embeds` is reported; an edited/added/deleted edge target yields the single-node path.
+* **T9.3-3 Deletion identities.** A deleted node reports under its baseline identity mapped forward through the journal; when that identity is now borne by a distinct new node (5.4), it appears twice — once deleted, once added.
+
+## 10. Review
+
+### 10.1 Sessions
+
+* **T10.1-1 Storage.** `review create` writes exactly `.xspec/reviews/<name>.json`; the file is plain, deterministic (two identical fixtures → identical bytes), and parseable as a single JSON document.
+* **T10.1-2 Names.** Valid: letters, digits, `.`, `_`, `-`, not beginning with `.`. Invalid names (`/`, space, empty, leading `.`, non-ASCII) → usage error, exit 2, nothing created. Names are case-sensitive for all subcommands (`status Foo` does not find `foo` → exit 2), but `create` refuses a name matching an existing session ignoring ASCII case (exit 1, refused operation per 10.7/12.0).
+* **T10.1-3 Non-session files.** A stray file `.xspec/reviews/notes.txt` and a subdirectory are ignored by `list`, `check`, and every subcommand.
+* **T10.1-4 Corruption.** Each corrupt state → every `review` subcommand naming the session reports corruption, exits 1, modifies nothing; `list` reports the session corrupt in place of its fields and exits 1; `check` reports 14.21: unparseable JSON; missing 10.2 field; unknown status; duplicate item `id`s; `blockedBy` naming an absent item; a `blockedBy` cycle; two items with same kind and scope node; malformed recorded creation parameters or decompositions; a session path that is a directory or symlink (13.4).
+
+### 10.2 Items
+
+* **T10.2-1 Fields.** `show`/`export` present every field of 10.2 for representative items of every built-in kind: `id`, `kind`, `scope`, `context`, `reason`, `origin`, `baseline`, `current`, `status`, `note` (after a `--note` resolve), `blockedBy`.
+* **T10.2-2 Baseline fixing.** In a `--base` session, item `baseline` holds the values at the recorded baseline commit even after further edits; in `audit`/`coverage` sessions, the values at item-entry time.
+* **T10.2-3 Actionability after loss.** Delete a scoped node's file, then `show`/`next --json`: the item still presents baseline identity and baseline text sufficient to act (self-contained payload, 10.7).
+
+### 10.3 Statuses and blocking
+
+* **T10.3-1** `resolve --status` accepts `updated`, `no-change`, `skipped`; any other value → exit 2. Items with `unresolved` or `invalidated` need review (appear in `next`); resolved ones do not.
+* **T10.3-2 Re-blocking.** A resolved blocker that becomes `invalidated` re-blocks its dependents: dependent's blocked state flips in `status`, and `resolve` on the dependent is refused until the blocker is re-resolved.
+
+### 10.4 Relevant hashes and invalidation
+
+* **T10.4-1 Per-kind sensitivity.** For each kind, the specified relevant-state change invalidates a resolved item, and irrelevant changes do not: `subtree-coherence` (scope subtreeHash or metadataHash; not an out-of-scope edit); `parent-consistency` (scope ownHash/metadataHash, or any context node's subtreeHash — a deep edit under a context child invalidates; the non-invalidating control is an edit outside scope and context); `dependency-consistency` (upstream target subtreeHash); `metadata-consistency` (scope metadataHash only — a text edit does not invalidate); `code-impact` (subtreeHash or effectiveHash of any impact-edge target); `uncovered-requirement` (scope subtreeHash/metadataHash).
+* **T10.4-2 Presence changes.** Deleting a scope node after resolve invalidates; restoring it invalidates a resolution recorded against absence; a node already absent at resolve time does not invalidate by remaining absent (deletion review stays resolvable).
+* **T10.4-3 Context-set change.** A change that alters the item's generator-derived context set (e.g. a new changed branch under a resolved `parent-consistency` item's scope) invalidates without any recorded hash changing.
+* **T10.4-4 Rename immunity.** `xspec rename`/`move` on scoped or context nodes: no duplicate items, no lost statuses, nothing invalidated by the identity mapping alone; reads present recorded nodes under current identities (mapped forward), for present and absent nodes alike.
+* **T10.4-5 Reads never write.** `status`, `next`, `show`, `export` leave the session file byte-identical, including when they compute and report invalidation; a stale resolution is reported `invalidated` on read, and the stored status is only rewritten by mutating subcommands.
+
+### 10.5 path-blocks
+
+* **T10.5-1 Generation.** SPEC.md §15's worked change (leaf text edit) yields exactly the four listed items with specified scope/context/origin. Extended fixture: a `changed` node with a `changed` ancestor generates no own item (skipping rule); scope of `subtree-coherence` is the node plus all descendants; multiple changed nodes sharing an ancestor A yield one `parent-consistency` item for A against the union of branches.
+* **T10.5-2 Blocking chains.** A's `parent-consistency` item is blocked by, per changed branch, the child's `subtree-coherence` item (child is the changed node) or the child's `parent-consistency` item (deeper change); chains extend to the root; only those two kinds block `parent-consistency` items; `metadata-consistency`, `dependency-consistency`, and `code-impact` items have empty `blockedBy`.
+* **T10.5-3 Metadata/dependency/code items.** One `metadata-consistency` per `metadata-changed` node (context: added and removed `d` targets; `coverage`/`tags` changes described in `reason`); one `dependency-consistency` per node with a dependency edge to a target whose effectiveHash changed (context: those targets; origin: originating nodes); one `code-impact` per impacted location (context: the impact-edge targets that make it impacted, added and deleted included).
+* **T10.5-4 Item order.** A fixture with items of all kinds across two files asserts the total order: requirement-scoped first by depth deepest-first (roots 0), then kind order `subtree-coherence`, `metadata-consistency`, `dependency-consistency`, `parent-consistency`, then file path bytes, then document order; `code-impact` items last by location identity; after deleting a scope node, absent-scope items order after present ones by identity then item `id` (10.5 ordering rule); `status`/`next`/`export` all present this order.
+* **T10.5-5 Re-derivation on updated.** Resolving an item `updated` re-derives: a matching kind+scope item keeps `id`, status, recorded state; a context-set change marks it per 10.4; items no longer generated remain with their `blockedBy`; a newly `changed` node's item appears in order; `blockedBy` is recomputed with decomposed references replaced by decompositions (after a `split`); a decomposed kind+scope is never re-added — its decomposition applies recursively; sibling subtrees enter only through re-derivation (resolving with `no-change`/`skipped` does not re-derive — a concurrent workspace edit surfaces as invalidation, not new items, until an `updated` resolve).
+* **T10.5-6 Baseline recording.** The session records the resolved commit identity of `--base`; later `HEAD` movement or branch renames do not change what generators run against (re-derivation still diffs against the recorded commit).
+
+### 10.6 audit
+
+* **T10.6-1 Generation.** One `subtree-coherence` item per requirement node, roots included; context: ancestor chain (empty for roots); origin empty; scope: node plus descendants; no baseline required (works in a git-less workspace).
+* **T10.6-2 Order and blocking.** Item order: scope-node file path bytes, then document order; each item's `blockedBy` is exactly its child sections' items, so leaves are unblocked and `next` walks bottom-up; after a `split`, blockers are the decomposition items (10.5/10.7).
+
+### 10.7 Commands
+
+* **T10.7-1 create flags.** Exactly one of `--base`, `--strategy audit`, `--coverage` required: none, two, or `--strategy` with any other value → exit 2. `create` with an existing name refused (exit 1). Missing `--name` → exit 2.
+* **T10.7-2 Recorded parameters.** A `coverage` session records the profile definition with group names replaced by glob lists and kind: after `create`, renaming the profile or editing its group's globs in configuration does not change session behavior (recorded globs still matched against currently discovered sources); a file no longer in any configured group leaves the session's view (as if deleted). A baseline session records the commit (T10.5-6); an audit session records none.
+* **T10.7-3 Unresolvable baseline.** `create --base` with an unresolvable ref, and any later `review` command whose recorded baseline can no longer be reconstructed, fail per 6.3 as exit 2, modifying nothing.
+* **T10.7-4 coverage sessions.** One `uncovered-requirement` item per uncovered required node of the recorded profile — scope: the node; context: ancestor chain; origin and `blockedBy` empty; item order file path then document order.
+* **T10.7-5 list.** Reports every session with name, strategy, item counts by stored status (no read-time invalidation applied — a stale-resolved item still counts under its stored status); corrupt sessions reported by name as corrupt; exit 1 iff any corrupt session exists, else 0.
+* **T10.7-6 status.** Items in item order with id, kind, scope, status, blocked state, plus totals by status (read-time invalidation applied).
+* **T10.7-7 next.** Returns the first needing-review unblocked item in item order; when all items are resolved (and for an empty session), exits 0 and reports fully resolved in human and `--json` forms with no item in the JSON payload; `--json` payload is self-contained: scope text, context text, origin before/after text, source ranges, baseline and current hashes.
+* **T10.7-8 show/export.** `show <name> <item-id>` reports the full item (10.2 fields plus the `next --json` text payload); unknown item ID → exit 2. `export` emits one JSON document — with or without `--json` — containing name, strategy, recorded creation parameters, recorded decompositions, and every item in item order with fields, blocked state, payload, and read-time invalidation applied.
+* **T10.7-9 split.** Splitting a `subtree-coherence` item whose scope root has children: one `subtree-coherence` item per child subtree (context: child's ancestor chain) plus one `parent-consistency` item for the scope root (context: the child subtrees; `blockedBy`: the child items); existing kind+scope items are reused with `id`/status/state kept (audit case); new decomposition items inherit the original's `blockedBy`; every item blocked by the original becomes blocked by all decomposition items; the original is removed and its `id` never reused (assert across subsequent re-derivations); the decomposition is recorded durably and governs re-derivation (T10.5-5); `origin` per decomposition scope (empty in audit). Refused (exit 1): `split` on any other kind; on a childless scope root.
+* **T10.7-10 resolve.** Sets status and records current relevant state; works on any unblocked item regardless of status (re-resolving `invalidated` and flipping a resolved status both work); resolving a blocked item refused (exit 1); unknown session or item → exit 2; `--note` stored and reported.
+
+## 11. Query
+
+All `query` output is JSON-only; a `query` subcommand without `--json` emits the same single JSON document.
+
+* **T11-1 node.** Returns identity, source range, own and subtree text (expanded, 1.6), all four hashes, tags, coverage attribute (absent for roots), and incoming and outgoing edges by kind.
+* **T11-2 nodes.** Filters `--group`, `--file <glob>`, `--tag`, `--coverage` combine conjunctively; `--coverage` matches no root; each row carries identity, source range, tags, coverage attribute (absent for roots); a `--file` pattern resolving outside the workspace root → exit 2 (invalid flag value).
+* **T11-3 subtree/ancestors.** `subtree` returns the node plus descendants in document order (root query returns the whole file); `ancestors` returns proper ancestors nearest-first ending at the file root, excluding the queried node (empty for a root).
+* **T11-4 edges.** `--from`/`--to` accept requirement nodes and code locations; `--kinds` filters over all four kinds and defaults to no filter (contains edges included); comma-separated list form; unknown kind value → exit 2.
+* **T11-5 reachable.** Reports existence of a dependency path under the given kinds (default: all three dependency kinds, never `contains`) and one shortest witness path with the 12.0 tie-break (two-equal-paths fixture).
+* **T11-6 Identity resolution.** Bare `path` resolves to a root node for a spec-group file and to a code location for a code-group file; `path#unit` and `path#unit@N` address code locations; a path in no configured group → exit 2 (unknown, 12.0).
+* **T11-7 Ordering.** Every result list is deterministic: repeated runs byte-identical; content-identical workspaces in different directories produce identical output (H-6).
+
+## 12. Commands
+
+### 12.0 Global conventions
+
+* **T12.0-1 --json everywhere.** For every command and subcommand this specification covers, `--json` emits exactly one JSON document as the entire standard output, carrying the same information as the human report (adapter-verified per command in the sections above; this test sweeps that every command accepts the flag).
+* **T12.0-2 Streams.** A failing `build`'s validation errors and `check`'s findings are standard-output content (exit 1); usage/configuration errors print diagnostics to standard error with empty standard output under `--json` (exit 2); non-JSON diagnostics never contaminate a `--json` stdout.
+* **T12.0-3 --config.** Every command accepts `--config <path>`; a relative path resolves against the working directory, not the workspace root.
+* **T12.0-4 Flag repetition.** Repeating a flag on any command → exit 2; list-valued flags take one comma-separated value (`--kinds depends,embeds`).
+* **T12.0-5 Argument addressing.** `<node>`, `<graph-node>`, `<file>`, and `--file` arguments are workspace-relative with `/` separators, independent of the working directory (run each representative command from a subdirectory); `--test-hold <path>` resolves against the working directory (13.5).
+* **T12.0-6 Case and bytes.** IDs, tags, identities, session names, and paths compare byte-wise case-sensitively: `A.mdx` vs `a.mdx` identities are distinct; `--tag Foo` does not match `foo`; no Unicode normalization (NFC vs NFD spellings of one tag are two tags). Sole exception: session-name creation collision (T10.1-2).
+* **T12.0-7 Determinism.** Representative sweep: `build` outputs, generated files, graph data, Markdown, journal entries, session files, and every report are byte-identical across repeated runs and across content-identical workspaces at different absolute paths (no wall-clock, randomness, absolute paths, or environment leakage; run with differing irrelevant environment variables).
+* **T12.0-8 Shortest-path tie-break.** Where one shortest path is reported (coverage 8.2, impact 9.3, reachable 11), among equal-length candidates the element-wise byte-least node-identity sequence is reported (dedicated fixtures per command).
+* **T12.0-9 Exit-code partition.** A table-driven sweep asserting one representative per class per command family: 0 (success and informational reports: `ids`, `show`, `impact` with differences, `query`, review reads including fully-resolved `next`, `coverage` without `--check`); 1 (findings: failing `build`, `check` findings, `coverage --check` uncovered, refused `rename`/`move`, refused review operations, corrupt-session reports); 2 (usage/configuration: unknown command; unknown flag; missing required flag/argument; invalid flag value; unknown profile/session/group/item/node/file; invalid session name; configuration errors; unreadable baseline; mutual-exclusion refusal).
+* **T12.0-10 Check ordering.** Covered by T6.4-4/T6.5-5 (existence and baseline checks precede source validation; unparseable-file masking flips to exit 1).
+
+### 12.1 `xspec build`
+
+* **T12.1-1 Products.** A successful `build` parses and validates sources, resolves dependencies, writes generated modules (13.1), emits Markdown when enabled, and writes graph data under `.xspec/` (existence plus downstream commands succeed without rebuilding).
+* **T12.1-2 No policy.** T7.5-6.
+* **T12.1-3 Regeneration and orphan removal.** After removing a source file (or disabling emission), `build` removes the derived files it no longer generates (module, companions, Markdown); after renaming a source, old derived paths disappear and new ones appear.
+* **T12.1-4 Failed build modifies nothing.** Against a workspace with prior derived state: introduce a validation error, run `build` (exit 1) — every derived file and all graph data byte-identical to before; same for a configuration error (exit 2).
+
+### 12.2 `xspec check`
+
+* **T12.2-1 Green path.** On a freshly built valid workspace, `check` exits 0.
+* **T12.2-2 Scope.** One workspace per finding family asserting `check` reports it with exit 1: all build validations (sources unchanged since a valid build but edited to invalid — check does not accept stale outputs); stale generated output and orphaned recorded derived file (14.10, `check`-only; asserted after hand-editing a generated file, hand-deleting one, editing a source without rebuilding, and disabling emission without rebuilding); unresolved/non-static references; cycles; journal integrity (14.13); policy (14.12, `check`-only); corrupt sessions (14.21).
+* **T12.2-3 Never refreshes.** `check` on a stale workspace reports staleness and leaves graph data and derived files byte-identical (13.3).
+
+### 12.3 `xspec ids`
+
+* **T12.3-1** IDs grouped by file; `--tree` renders per-file nesting; `--file <glob>` restricts (glob rules of 7, outside-root → exit 2); `--json` parity.
+* **T12.3-2 --unreferenced.** Lists only nodes with no incoming `depends`/`embeds`/`references` edges — `contains` does not count (a parent whose child is referenced still lists when itself unreferenced); demonstrates unreferenced ≠ uncovered: a node referenced from outside any coverage boundary is referenced yet uncovered in a given profile.
+
+### 12.4 `xspec show`
+
+* **T12.4-1** Accepts `path#id` and bare `path` (root); prints ID, source range, own and subtree text, hashes, and edges by kind; information equals `query node`'s for the same node (adapter-compared).
+
+### 12.5 Dispatch
+
+* **T12.5-1** `coverage`, `impact`, `review`, `query`, `rename`, `move` behave per sections 8, 9, 10, 11, 6 (covered there); an unknown subcommand or command → exit 2.
+
+## 13. Workspace Files
+
+### 13.1 Generated TypeScript
+
+* **T13.1-1 Layout.** `NAME.mdx` generates `NAME.xspec.ts` in the source file's directory, plus companions each named `NAME.xspec.<suffix>`; every generated file carries `.xspec.` in its name; the set is recorded such that later builds remove orphans (T12.1-3).
+* **T13.1-2 Standalone consumption.** In a consumer project with only standard TypeScript tooling installed (no xspec runtime dependency): `import SPEC, { text } from "./NAME.xspec"` resolves; type checking (4.1), hover and go-to-definition (4.2), and runtime `text`/markers (4.3–4.5) all work. This is the umbrella E2E for section 4's consumer tests.
+
+### 13.2 Markdown output
+
+* **T13.2-1** `NAME.mdx` emits `NAME.md` next to it when enabled; with `outDir`, under the directory preserving workspace-relative paths; content per section 3.
+
+### 13.3 Graph data
+
+* **T13.3-1 Serving reads.** After `build`, the read commands (`check`, `ids`, `show`, `coverage`, `impact`, `review`, `query`) answer without error; graph data lives under `.xspec/`.
+* **T13.3-2 Refresh.** Delete `.xspec` graph data (or edit a source) and run each of `ids`, `show`, `coverage`, `impact`, `review status`, `query`: the answer reflects current sources (never stale data), graph data is rewritten as `build` would write it, but no TypeScript or Markdown is generated or removed and recorded derived-file paths are unchanged (a stale generated module stays stale — `check` still reports 14.10 afterwards).
+* **T13.3-3 Failed refresh.** With invalid sources, each read command reports the validation errors, exits 1, answers nothing, and modifies nothing (derived files and graph data byte-identical).
+* **T13.3-4 Determinism.** Graph data files are byte-deterministic across rebuilds of an identical workspace (content otherwise unasserted, H-4).
+
+### 13.4 Derived and durable files
+
+* **T13.4-1 Plain committable files.** Every file xspec writes is a plain file; writing the workspace into git and back (commit, clean checkout) round-trips builds and reads.
+* **T13.4-2 Derived reproducibility.** Delete, truncate, and garbage-overwrite each class of derived file (module, companion, Markdown, graph data): `build` restores all byte-exactly.
+* **T13.4-3 Orphan knowledge boundary.** Remove the recorded derived-file paths record along with a source's group membership such that a derived file is orphaned while the record is missing: xspec does not remove the file; it may be deleted manually (asserted: subsequent builds leave the stray file alone).
+* **T13.4-4 Derived paths belong to xspec.** A user-created file at a derived path is replaced by `build`; a symbolic link at a derived file's own path is replaced as the occupant — nothing is written through it (link target byte-identical after build, link gone, plain file present; not an error).
+* **T13.4-5 Durable protection.** `build` and read commands never modify or delete the journal or session files (byte-compare); durable files are never regenerated (deleting a session file: xspec does not recreate it; review naming it → exit 2 unknown session).
+* **T13.4-6 Symlink write rules.** A write whose path has a symbolic link at a workspace-relative directory component is refused before anything is modified (14.22; command exits 1 with the report, workspace byte-identical); `check` reports the same without writing; a durable path occupied by a symlink or non-plain file → journal error (14.13) / corrupt session (14.21) — never read, appended, or replaced (link and target byte-identical after the attempt).
+* **T13.4-7 Source exclusion.** T7-6 covers `.xspec.`/`.xspec/`/emit-destination exclusion from groups.
+
+### 13.5 Concurrency and isolation
+
+All mutual-exclusion tests use the `--test-hold <path>` seam for determinism.
+
+* **T13.5-1 Hold seam basics.** A mutating command (`rename`, `move`, `review create/resolve/split`) with `--test-hold`: creates an empty file at the path after acquiring exclusivity and before modifying anything (workspace byte-identical while held), proceeds only once the file is deleted, then completes normally. If anything exists at the hold path — a file, directory, or symbolic link — the command fails exit 2 without modifying anything.
+* **T13.5-2 Mutual exclusion.** While command 1 is held, each other mutating command fails promptly with exit 2 and modifies nothing (journal, sessions, sources byte-identical); after command 1 completes, the second command succeeds.
+* **T13.5-3 Exclusivity ends with the process.** Kill a held mutating command; a subsequent mutating command succeeds (a terminated holder never blocks).
+* **T13.5-4 Readers during mutation.** While a mutating command is held, read commands still run and observe the prior state; non-mutating commands run concurrently with each other (parallel `build`/`query` storm on one workspace terminates, and any derived-file inconsistency is resolved by one final `build` — byte-equal to a clean build).
+* **T13.5-5 Atomic visibility.** A concurrent reader polling a derived file during repeated builds only ever observes prior content, complete new content, or absence-before-first-write — never a partial file (property-style loop, 16).
+* **T13.5-6 Workspace isolation.** Two workspaces driven concurrently by parallel harness instances never interfere: results equal serial runs (H-1).
+* **T13.5-7 Interrupted mutation.** A mutating command killed mid-operation (using the hold to time the kill) may leave inconsistency; `xspec check` afterwards reports the inconsistent state rather than passing silently (14; asserted on a fixture where the kill demonstrably left sources and durable files inconsistent, e.g. via T13.5-3's kill point — if no inconsistency was produced, `check` passing is also conforming; the assertion is: `check` never crashes and either passes on a consistent state or reports findings).
+
+## 14. Validation Errors
+
+Sections 1–13 exercise each numbered condition in its home context; this section adds the reporting-contract tests. Traceability of the 22 conditions: 14.1 (T1.3-1), 14.2 (T1.3-2/3/4/6), 14.3 (T1.3-5), 14.4 (T1.4-1/4), 14.5/14.6/14.7 (T14-2), 14.8 (T2.4-2/3, T4.3-2, T4.5-3), 14.9 (T2.1-5, T5.3-1/2), 14.10 (T12.2-2), 14.11 (T4.4-1), 14.12 (T7.5-2/6), 14.13 (T6.1-3, T13.4-6), 14.14 (T7-1..T7.5-1), 14.15 (T2.1-2/3, T4-2), 14.16 (T2.7-1), 14.17 (T2.5-3, T2.7-3), 14.18 (T4.5-5), 14.19 (T1.5-2, T7.1-1), 14.20 (T1.6-5, T14-3), 14.21 (T10.1-4), 14.22 (T13.4-6).
+
+* **T14-1 Actionable and complete reporting.** A workspace seeded with several independent error conditions across files: `build` and `check` report each of them (not only the first), and every report identifies file and location and states a correction-oriented message (information presence, not wording).
+* **T14-2 Unresolved references.** A `d` reference, a `text(...)` target, and a TypeScript marker/`text` call that do not resolve → 14.5, 14.6, 14.7 respectively; the TS case is also a type error against the generated module (asserted when a prior valid generation exists).
+* **T14-3 Masking.** An unparseable file (14.20 — malformed MDX; malformed TS under the grammar its name selects: a TSX-only construct in a `.ts` file; invalid UTF-8; BOM) masks conditions inside itself, and every reference into it from other files reports as unresolved (14.5–14.7); the parse-failure location is reported. A configuration error suppresses all source analysis: only 14.14 is reported (exit 2) even with invalid sources present.
+* **T14-4 Reporter matrix.** 14.10 and 14.12 reported by `check` only (a stale workspace `build`s successfully by regenerating; a policy-violating workspace `build`s successfully); 14.21 reported by `check`, by `review` subcommands naming the session, and by `review list` — not by `build`; every other condition reported by both `build` and `check`.
+
+## 15. Example
+
+* **T15-1 Canonical walkthrough.** Build SPEC.md §15's exact workspace (`specs/SPEC.mdx`, `specs/DERIVED.mdx`, `src/hello.ts`, matching configuration) and assert, in one integration test: the six listed graph edges exactly; a transitive coverage profile targeting `print.hello` with `src` as code boundary is satisfied via `hello → derived.hello → print.hello`; after editing `print.hello`'s text, the categories listed (changed; descendant-changed; upstream-changed; `hello.ts#hello` transitively impacted); a default `path-blocks` session containing exactly the four listed items; and after `xspec rename` of `print.hello` instead, a journal mapping plus an impact run against the pre-rename baseline reporting no changes.
+
+## 16. Property-Based and Fuzz Tests
+
+Property tests generate inputs from seeded, reproducible generators (H-10), assert spec-derived invariants, and shrink failures. Each property is also anchored by the deterministic fixtures of sections 1–15; properties exist to search the input space, not to replace them.
+
+* **P-1 Segment/tag validity.** Generator over code points (weighted toward boundaries: whitespace/control classes of 1.4, U+00A0/U+0085/U+2028, `.`/`#`, forbidden names): a generated segment is accepted by `build` iff it satisfies 1.4; likewise tags (with `.` allowed).
+* **P-2 Markdown compilation.** Random documents composed of prose blocks, nested sections, imports, comments, and embeddings, over mixed line terminators: compiled output equals an independent oracle implementing the removal/replacement/line-drop rules of 3 (the oracle lives in the harness); compilation is deterministic; content bytes outside removed constructs are preserved.
+* **P-3 Text algebra.** For random documents: root subtree text equals compiled Markdown output; a node's subtree text equals its own-text runs interleaved with its children's subtree texts in document order (1.6); N children yield N+1 runs.
+* **P-4 Hash laws.** For random workspaces and random single edits: subtreeHash changed iff the 5.5 condition holds; metadataHash changed iff `d`/`coverage`/`tags` changed; ownHash insensitive to embedded-target edits; effectiveHash monotone over the dependency closure (any dependency-target effectiveHash change propagates); identical workspaces hash identically.
+* **P-5 Rename/move purity.** Random valid workspaces, random journaled rename/file-move sequences: all hashes byte-stable, impact against any prior commit in the sequence reports no categories, and all references still resolve; random section moves: only the predicted parents gain categories.
+* **P-6 Baseline replay.** Random edit/rename/move/commit interleavings: impact categories against each historical baseline equal an oracle diff of the two graphs with identities mapped through the journal suffix.
+* **P-7 Glob and capture matching.** Random patterns and paths over the 7/7.5 grammar: match decisions and capture values equal a spec oracle; every match is unique under the left-to-right shortest-match rule; captures never span `/` and never match empty.
+* **P-8 Parser robustness.** Fuzzed byte inputs (mutated MDX/TS/config, invalid UTF-8, BOMs, giant nesting, pathological line terminators): every command terminates, never emits a partial JSON document on `--json`, and always exits 0, 1, or 2 per the 12.0 partition; `build` failures modify nothing.
+* **P-9 Review session invariants.** Random sequences of valid review operations (create/next/resolve/split/re-derive triggers) interleaved with workspace edits: at most one item per kind and scope node; `blockedBy` acyclic; retired `id`s never reused; `next` always returns an unblocked needing-review item or reports fully resolved; reads never change session bytes; stored sessions always re-read as non-corrupt.
+* **P-10 Concurrency.** Randomized schedules of concurrent readers and one mutating command (via `--test-hold` and process kills): readers observe only prior-or-complete file states (T13.5-5); mutual exclusion never loses a journal append or a resolution (post-hoc: journal lines = successful mutating operations; session statuses = successful resolves).
+
+## 17. Self-Tests and Certification
+
+Confidence that the harness itself is correct comes primarily from certification against `specs/CERTIFICATIONS.md`, with internal self-tests only for harness machinery certification does not exercise (PROCESS.md). The harness MUST provide a certification runner that can execute the full suite (or a named subset) against an arbitrary fixture product supplied per CERTIFICATIONS.md.
+
+* **C-1 Certification protocol.** For each fixture in `specs/CERTIFICATIONS.md`: every in-scope test passes against the conformer; for each violator, exactly the tests it certifies fail against it and all other in-scope tests pass. A certified test's certification MUST run green before the product is implemented (red-green gate). Certification results are part of the harness's CI output.
+* **C-2 Fixture interface.** Fixtures are driven through the identical blackbox surfaces as the product (H-2): the runner takes an executable/workspace binding and nothing else, so certifying and testing use one code path.
+* **S-1 Traceability self-check.** The H-7 map is complete and well-formed (fails on unmapped SPEC.md subsections or dangling references).
+* **S-2 Workspace builder.** The fixture builder writes exactly the declared bytes (round-trip check including CRLF/CR content, invalid-UTF-8 blobs, BOMs, symlinks, and git fixtures with scripted commits) — certification cannot exercise builder bugs that make fixtures diverge from their declarations.
+* **S-3 Subprocess driver.** Captures exit codes and keeps stdout/stderr separated (verified against a known-behavior stand-in command); enforces per-test working directories; detects hangs via timeout and reports them as failures, not skips.
+* **S-4 TypeScript tooling driver.** Detects a known type error, a known definition location, and a known hover text in a hand-written non-xspec fixture project, so section 4's consumer assertions cannot pass vacuously.
+* **S-5 Output adapters.** Each adapter (H-3) rejects documents missing required information (fed synthetic wrong-shape documents) rather than defaulting.
+* **S-6 Oracles.** The Markdown oracle (P-2) and glob/capture oracle (P-7) pass their own fixed vector suites derived from SPEC.md's examples (3, 7.5) before being trusted by property tests.
+* **S-7 Red-green sweep.** Against an empty stub product (every command exits with an unexpected code and no output), every product-facing test fails with a diagnosed assertion and the suite completes without harness errors (H-8).
+
+## 18. Execution and CI
+
+* **E-1 GitHub CI.** The full suite — sections 1–17, certification included — runs in GitHub CI on Linux runners. CI provides no network access guarantees beyond dependency installation; the suite itself MUST pass with network access disabled after setup (xspec performs no network access; the harness needs none).
+* **E-2 Local-only tests.** Tests that cannot run in GitHub CI are implemented as local-only tests, collected in a separately invocable local suite, and never marked skipped (PROCESS.md). This set is currently empty; symlink, kill/interruption, case-sensitivity, and concurrency tests all run on Linux CI. Any future local-only test MUST document why CI cannot run it.
+* **E-3 Parallelism.** The suite runs its tests in parallel and MUST pass under parallel execution; multiple suite instances can run on one machine concurrently (H-1, T13.5-6).
+* **E-4 No production keys, no external services.** The suite uses no credentials and contacts no hosted services (there are none to test; git fixtures are local).
+* **E-5 Determinism of the suite.** Two consecutive full runs on one machine produce the same pass/fail results; flaky tests are defects. Property tests run a fixed seed set in CI (plus an optional randomized local mode reporting seeds).
+
+
+
+
