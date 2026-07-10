@@ -21,7 +21,6 @@ Planned 2026-07-10 from the Phase 9 iteration-1 compliance panel (TEST-SPEC.md a
 
 Each task implements exactly the named TEST-SPEC.md tests, to their full text (arms included). Default verification per Conventions.
 
-- [ ] **SUITE-11 — §3:** T3-1…T3-6 (removals, replacement, line-drop rule with all counter-cases and class boundaries, line terminators incl. lone CR and no final terminator, in-line tags, emission scope). All but T3-6 run `markdown: { emit: true }` and byte-assert. CONF-MD in-scope, staging constraints (CERTIFICATIONS.md §VIOL-MD-CLASS/§VIOL-MD-CR): U+00A0/U+0085/U+2028 appear on removal-affected lines only in T3-3's class-boundary arms, and lone U+000D appears only in T3-4's fixtures — keep both out of every other in-scope fixture.
 - [ ] **SUITE-12 — §4 preamble:** T4-1…T4-4 (generated-module header; the full TS import-rule 14.15 matrix incl. re-export forms, `import =`, dynamic import, derived-path specifiers, duplicate-binding collisions; aliased bindings; type-only imports record nothing). Needs HARNESS-05.
 - [ ] **SUITE-13 — §4.1–4.2:** T4.1-1…T4.1-3, T4.2-1…T4.2-4 (skeleton chains and type errors, readonly, opaque node values; doc comments with expanded own text, 1000-code-point truncation, `*\/` escaping, go-to-definition/hover — needs HARNESS-05 language-service queries).
 - [ ] **SUITE-14 — §4.3–4.4:** T4.3-1, T4.3-2, T4.4-1, T4.4-2 (`text(node)` runtime value + `embeds` edge; string/dynamic args → 14.8; cross-module branding type error 14.11 with runtime throw naming both modules; aliased `text` per module).
