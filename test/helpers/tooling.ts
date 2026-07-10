@@ -19,6 +19,11 @@
 //   decoded file text (the TypeScript convention, not bytes); lines and
 //   columns are 1-based, with line breaks counted as TypeScript's scanner
 //   does (LF, CR, CRLF, U+2028, U+2029).
+// - `definitionsAt` reports the raw language-service targets;
+//   `sourceDefinitionsAt` additionally applies declaration-map mapping the
+//   way tsserver does for editors, which is how a target can land in a
+//   non-TypeScript original such as a source `.mdx` file (SPEC.md 4.2, 13.1
+//   companion files). See the interface comments below.
 // - Compiled consumers run under plain Node (`runConsumer`) through the
 //   blackbox subprocess driver: `node <entry>` with the sanitized environment
 //   and `NODE_PATH` dropped, so nothing outside the consumer's own files (and
@@ -91,6 +96,45 @@ export interface DefinitionTarget {
   readonly name: string;
   /** TypeScript script-element kind (e.g. "function", "const"). */
   readonly kind: string;
+}
+
+/**
+ * One go-to-definition target as an editor presents it: the raw
+ * language-service target, mapped through a declaration map (`.d.ts.map`)
+ * into its original source when the declaring file carries one — the
+ * mechanism SPEC.md 13.1 companion files use to make go-to-definition
+ * resolve into a source `.mdx` file (SPEC.md 4.2). See
+ * {@link ConsumerProject.sourceDefinitionsAt}.
+ */
+export interface SourceDefinitionTarget {
+  /** Project-relative mapped file (absolute when outside the root). */
+  readonly file: string;
+  /** Start of the mapped span in the mapped file. */
+  readonly start: SourcePosition;
+  /** True when a declaration map moved the target out of `raw.file`. */
+  readonly mapped: boolean;
+  /** The unmapped language-service target (name, kind, raw file/span). */
+  readonly raw: DefinitionTarget;
+}
+
+/** A file/offset pair exchanged with the language service's source mapper. */
+interface DocumentPosition {
+  readonly fileName: string;
+  readonly pos: number;
+}
+
+/**
+ * The language service's declaration-map source mapper. The method is
+ * `@internal` (absent from the public type declarations) but present at
+ * runtime in the pinned TypeScript version, and it is the exact machinery
+ * tsserver uses to land editor go-to-definition in original sources; the S-4
+ * self-test pins its availability and behavior, so a TypeScript upgrade that
+ * drops it fails loudly there, never as a mysterious product-test failure.
+ */
+interface InternalSourceMapper {
+  tryGetSourcePosition(
+    position: DocumentPosition,
+  ): DocumentPosition | undefined;
 }
 
 /** Hover (quick info) at a position. */
@@ -321,6 +365,47 @@ export class ConsumerProject {
     });
   }
 
+  /**
+   * Go-to-definition targets at a position as standard editor tooling
+   * presents them (SPEC.md 4.2, 13.1): each raw language-service target is
+   * mapped through the declaring file's declaration map when it has one —
+   * raw `getDefinitionAtPosition` alone can only land in program files, so
+   * without this tsserver-equivalent mapping step no product could ever
+   * satisfy "go-to-definition resolves into the source `.mdx` file". Targets
+   * whose declaring file carries no mapping are returned unmapped
+   * (`mapped: false`), so assertions on the mapped file fail diagnosed
+   * rather than erroring when a product provides no mapping (H-8).
+   */
+  sourceDefinitionsAt(position: FileOffset): readonly SourceDefinitionTarget[] {
+    const raws = this.definitionsAt(position);
+    if (raws.length === 0) return [];
+    const mapper = this.#sourceMapper();
+    return raws.map((raw) => {
+      const rawAbs = this.#absPath(raw.file);
+      const mapped = mapper.tryGetSourcePosition({
+        fileName: rawAbs,
+        pos: raw.start.offset,
+      });
+      if (mapped === undefined || sameNormalizedPath(mapped.fileName, rawAbs)) {
+        return { file: raw.file, start: raw.start, mapped: false, raw };
+      }
+      const text = this.#readCached(mapped.fileName);
+      if (text === undefined) {
+        fail(
+          `declaration-mapped definition target is not readable: ${mapped.fileName} ` +
+            `(mapped from ${raw.file} offset ${raw.start.offset})`,
+        );
+      }
+      const file = this.#describePath(mapped.fileName);
+      return {
+        file,
+        start: positionInText(file, text, mapped.pos),
+        mapped: true,
+        raw,
+      };
+    });
+  }
+
   /** Hover (quick info) at a position, or undefined when there is none. */
   hoverAt(position: FileOffset): HoverInfo | undefined {
     const abs = this.#absPath(position.file);
@@ -375,6 +460,23 @@ export class ConsumerProject {
       );
     }
     return program;
+  }
+
+  #sourceMapper(): InternalSourceMapper {
+    const service = this.#service as unknown as {
+      getSourceMapper?: () => InternalSourceMapper;
+    };
+    if (typeof service.getSourceMapper !== "function") {
+      // A harness defect (never a product failure): the pinned TypeScript
+      // stopped exposing its source mapper. The S-4 self-test fails first.
+      throw new Error(
+        "the TypeScript language service exposes no getSourceMapper() at runtime — " +
+          "the pinned TypeScript version changed its internal API; " +
+          "sourceDefinitionsAt (helpers/tooling.ts) needs a new mapping route " +
+          "(see the S-4 declaration-map self-test).",
+      );
+    }
+    return service.getSourceMapper();
   }
 
   #convertDiagnostic(diagnostic: ts.Diagnostic): ConsumerDiagnostic {
@@ -564,6 +666,14 @@ function compareDiagnostics(
   if (offsetA !== offsetB) return offsetA - offsetB;
   if (a.code !== b.code) return a.code - b.code;
   return a.message < b.message ? -1 : a.message > b.message ? 1 : 0;
+}
+
+/**
+ * Path equality for source-mapper results, which come back slash-normalized
+ * while local absolute paths may carry platform separators.
+ */
+function sameNormalizedPath(a: string, b: string): boolean {
+  return a.replace(/\\/g, "/") === b.replace(/\\/g, "/");
 }
 
 /**

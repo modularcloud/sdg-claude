@@ -67,6 +67,7 @@ import {
   buildOk,
   byteWindow,
   expectExit,
+  readGeneratedModule,
   runJson,
 } from "./support.js";
 
@@ -188,28 +189,6 @@ function leadingCommentRegion(moduleText: string): string {
     break;
   }
   return moduleText.slice(0, end);
-}
-
-/** Read a product-generated module as UTF-8 text, failing diagnosed (H-8). */
-async function readGeneratedModule(
-  workspace: TestWorkspace,
-  rel: string,
-  context: string,
-): Promise<string> {
-  const kind = await workspace.kind(rel);
-  if (kind !== "file") {
-    fail(
-      `${context}: expected the generated module as a plain file at ${rel} ` +
-        `(SPEC 13.1: NAME.mdx generates NAME.xspec.ts in the source file's ` +
-        `directory); found ${kind}`,
-    );
-  }
-  const bytes = await workspace.readBytes(rel);
-  try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-  } catch {
-    fail(`${context}: the generated module at ${rel} is not valid UTF-8`);
-  }
 }
 
 const T4_1 = defineProductTest({

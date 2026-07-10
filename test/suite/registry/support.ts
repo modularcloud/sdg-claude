@@ -86,6 +86,33 @@ export async function buildFindings(
 }
 
 /**
+ * Read a product-generated TypeScript module as UTF-8 text, failing diagnosed
+ * (H-8) when the module is missing, not a plain file, or not valid UTF-8
+ * (SPEC.md 13.1: `NAME.mdx` generates `NAME.xspec.ts` in the source file's
+ * directory).
+ */
+export async function readGeneratedModule(
+  workspace: TestWorkspace,
+  rel: string,
+  context: string,
+): Promise<string> {
+  const kind = await workspace.kind(rel);
+  if (kind !== "file") {
+    fail(
+      `${context}: expected the generated module as a plain file at ${rel} ` +
+        `(SPEC 13.1: NAME.mdx generates NAME.xspec.ts in the source file's ` +
+        `directory); found ${kind}`,
+    );
+  }
+  const bytes = await workspace.readBytes(rel);
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    fail(`${context}: the generated module at ${rel} is not valid UTF-8`);
+  }
+}
+
+/**
  * Assert the exact multiset of SPEC.md 14 condition identities present in a
  * findings report (`{"14.2": 1, ...}`): every condition staged in the fixture
  * is reported — none masked away, none phantom, none double-reported (§14:
