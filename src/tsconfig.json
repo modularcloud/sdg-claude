@@ -1,0 +1,13 @@
+{
+  // The product program (`xspec`). Compiled by `npm run build` to dist/;
+  // dist/cli/bin.js is the `xspec` executable declared in package.json.
+  // This project must never include files from test/ — the harness is a
+  // separate program (TEST-SPEC H-2; IMPLEMENTATION.md).
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "../dist",
+    "declaration": true
+  },
+  "include": ["./**/*.ts"]
+}

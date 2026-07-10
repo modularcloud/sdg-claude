@@ -1,0 +1,11 @@
+{
+  // The test harness program (TEST-SPEC.md; IMPLEMENTATION.md: Vitest).
+  // Typecheck only — Vitest transpiles at run time. This project must never
+  // import product code from src/: the harness drives the product exclusively
+  // as the built `xspec` executable in a subprocess (TEST-SPEC H-2).
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["./**/*.ts"]
+}

@@ -1,0 +1,15 @@
+{
+  // Shared compiler options for the two TypeScript programs in this repository:
+  // the product (src/tsconfig.json) and the test harness (test/tsconfig.json).
+  // IMPLEMENTATION.md: TypeScript current 5.x, `strict`, ES modules throughout,
+  // Node.js active LTS (oldest supported line: 22).
+  "compilerOptions": {
+    "strict": true,
+    "target": "es2023",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "skipLibCheck": true
+  }
+}

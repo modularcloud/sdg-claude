@@ -1,0 +1,47 @@
+{
+  "name": "xspec",
+  "version": "0.0.0",
+  "description": "xspec — the product program of this repository; the test harness under test/ is a separate program.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/modularcloud/sdg-claude.git"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "xspec": "dist/cli/bin.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p src",
+    "typecheck": "tsc -p src --noEmit && tsc -p test",
+    "test": "vitest run --config test/vitest.config.ts --project suite --project self",
+    "test:self": "vitest run --config test/vitest.config.ts --project self",
+    "test:windows": "vitest run --config test/vitest.config.ts --project windows",
+    "test:local": "vitest run --config test/vitest.config.ts --project local --passWithNoTests",
+    "format": "prettier --write src test",
+    "format:check": "prettier --check src test"
+  },
+  "dependencies": {
+    "remark-mdx": "^3.1.1",
+    "remark-parse": "^11.0.0",
+    "typescript": "^5.9.3",
+    "unified": "^11.0.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "prettier": "^3.9.5",
+    "vitest": "^4.1.10"
+  }
+}

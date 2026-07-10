@@ -1,0 +1,5 @@
+# No end-of-line conversion for any file, on any platform. The test suite
+# asserts byte-exact content (TEST-SPEC H-4) and the Windows CI leg asserts
+# byte-identity with the Linux leg over byte-identical input (E-6); autocrlf
+# checkouts would silently change fixture and source bytes between legs.
+* -text
