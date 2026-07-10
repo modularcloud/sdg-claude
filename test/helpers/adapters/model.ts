@@ -118,6 +118,19 @@ export interface NodeSummary {
   readonly tags: readonly string[];
 }
 
+/**
+ * Identity/tags/metadataHash summary of a `query node` document — the full
+ * CONF-VALID-scoped query surface (CERTIFICATIONS.md §CONF-VALID: fixtures
+ * within that scope promise exactly identity, tags, and metadataHash), for
+ * the tests comparing tag spellings through the metadata hash (T2.6-1,
+ * T2.6-2; SPEC.md 5.5).
+ */
+export interface NodeMetadataSummary {
+  readonly identity: string;
+  readonly tags: readonly string[];
+  readonly metadataHash: string;
+}
+
 /** `query reachable` (T11-5): existence plus one shortest witness path. */
 export interface ReachableReport {
   readonly reachable: boolean;

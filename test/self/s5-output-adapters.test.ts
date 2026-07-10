@@ -34,9 +34,11 @@ import {
   decodeImpactReport,
   decodeItemReport,
   decodeNextReport,
+  decodeNodeMetadataSummary,
   decodeNodeReport,
   decodeNodeRowsReport,
   decodeNodeSummary,
+  decodeNodeSummaryRowsReport,
   decodeReachableReport,
   decodeSessionListReport,
   decodeSessionStatusReport,
@@ -476,6 +478,91 @@ const DECODERS: readonly DecoderSpec[] = [
       { label: "empty identity", doc: put(GOOD_NODE, "", "identity") },
       { label: "missing tags", doc: omit(GOOD_NODE, "tags") },
       { label: "non-string tag", doc: put(GOOD_NODE, [3], "tags") },
+    ],
+  },
+  {
+    name: "query node (identity/tags/metadataHash summary)",
+    decode: decodeNodeMetadataSummary,
+    good: GOOD_NODE,
+    verify: (decoded: ReturnType<typeof decodeNodeMetadataSummary>) => {
+      expect(decoded.identity).toBe("specs/A.mdx#login");
+      expect(decoded.tags).toEqual(["auth", "v2"]);
+      expect(decoded.metadataHash).toBe("meta-1");
+    },
+    alsoGood: [
+      {
+        // The point of this summary decoder: a document carrying only the
+        // CONF-VALID-scoped query surface — identity, tags, and metadataHash,
+        // no other hash — decodes (CERTIFICATIONS.md §CONF-VALID; T2.6-1,
+        // T2.6-2).
+        label: "a document carrying only the scoped summary fields",
+        doc: {
+          identity: "specs/A.mdx#tagged",
+          tags: ["a", "b"],
+          hashes: { metadataHash: "meta-9" },
+        },
+        verify: (
+          decoded: ReturnType<typeof decodeNodeMetadataSummary>,
+        ): void => {
+          expect(decoded.identity).toBe("specs/A.mdx#tagged");
+          expect(decoded.tags).toEqual(["a", "b"]);
+          expect(decoded.metadataHash).toBe("meta-9");
+        },
+      },
+    ],
+    bad: [
+      { label: "missing identity", doc: omit(GOOD_NODE, "identity") },
+      { label: "missing tags", doc: omit(GOOD_NODE, "tags") },
+      { label: "missing hashes", doc: omit(GOOD_NODE, "hashes") },
+      {
+        label: "missing metadataHash",
+        doc: omit(GOOD_NODE, "hashes", "metadataHash"),
+      },
+      {
+        label: "empty metadataHash",
+        doc: put(GOOD_NODE, "", "hashes", "metadataHash"),
+      },
+    ],
+  },
+  {
+    name: "query nodes (identity/tags summary rows)",
+    decode: decodeNodeSummaryRowsReport,
+    good: GOOD_ROWS,
+    verify: (decoded: ReturnType<typeof decodeNodeSummaryRowsReport>) => {
+      expect(decoded).toEqual([
+        { identity: "specs/A.mdx#login", tags: ["auth"] },
+        { identity: "specs/A.mdx", tags: [] },
+      ]);
+    },
+    alsoGood: [
+      {
+        // Rows carrying only the CONF-VALID-scoped surface decode: no source
+        // range is demanded of a scoped fixture product (CERTIFICATIONS.md
+        // §CONF-VALID; T2.6-1).
+        label: "rows carrying only the scoped summary fields",
+        doc: { nodes: [{ identity: "specs/A.mdx#tagged", tags: ["a", "b"] }] },
+        verify: (
+          decoded: ReturnType<typeof decodeNodeSummaryRowsReport>,
+        ): void => {
+          expect(decoded).toEqual([
+            { identity: "specs/A.mdx#tagged", tags: ["a", "b"] },
+          ]);
+        },
+      },
+    ],
+    bad: [
+      { label: "missing nodes list", doc: {} },
+      { label: "nodes not an array", doc: { nodes: {} } },
+      { label: "row not an object", doc: { nodes: [7] } },
+      {
+        label: "row missing identity",
+        doc: omit(GOOD_ROWS, "nodes", 0, "identity"),
+      },
+      { label: "row missing tags", doc: omit(GOOD_ROWS, "nodes", 1, "tags") },
+      {
+        label: "row with a non-string tag",
+        doc: put(GOOD_ROWS, [3], "nodes", 0, "tags"),
+      },
     ],
   },
   {

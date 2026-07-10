@@ -31,6 +31,7 @@ import type {
   IdsTreeNode,
   IdsTreeReport,
   NodeHashes,
+  NodeMetadataSummary,
   NodeReport,
   NodeRow,
   NodeSummary,
@@ -182,6 +183,68 @@ export function decodeNodeSummary(doc: unknown, context?: string): NodeSummary {
     ),
     tags: expectStringArray(requiredKey(obj, "tags", site), at(site, "tags")),
   };
+}
+
+/**
+ * `query node` decoded to the full CONF-VALID-scoped surface — identity,
+ * tags, and metadataHash (T2.6-1, T2.6-2). Within `hashes`, only
+ * `metadataHash` is demanded: a scoped fixture product promises no other
+ * hash (CERTIFICATIONS.md §CONF-VALID), so requiring the full four-hash
+ * object would reject a document the scope permits. Everything else in the
+ * document is ignored, not validated.
+ */
+export function decodeNodeMetadataSummary(
+  doc: unknown,
+  context?: string,
+): NodeMetadataSummary {
+  const site = rootSite("query node (identity/tags/metadataHash)", context);
+  const obj = expectObject(doc, site);
+  const hashesSite = at(site, "hashes");
+  const hashes = expectObject(requiredKey(obj, "hashes", site), hashesSite);
+  return {
+    identity: expectNonEmptyString(
+      requiredKey(obj, "identity", site),
+      at(site, "identity"),
+    ),
+    tags: expectStringArray(requiredKey(obj, "tags", site), at(site, "tags")),
+    metadataHash: expectNonEmptyString(
+      requiredKey(hashes, "metadataHash", hashesSite),
+      at(hashesSite, "metadataHash"),
+    ),
+  };
+}
+
+/**
+ * `query nodes` rows decoded to identity and tags only (T2.6-1) — the row
+ * counterpart of {@link decodeNodeSummary}, for tests certified against
+ * fixtures whose scoped query surface reports only identity, tags, and
+ * metadataHash (CERTIFICATIONS.md §CONF-VALID): the full row contract's
+ * source range is not demanded. The `nodes` key is the `query nodes` shape's
+ * own (see the ASSUMED SHAPE above); other row members are ignored.
+ */
+export function decodeNodeSummaryRowsReport(
+  doc: unknown,
+  context?: string,
+): NodeSummary[] {
+  const site = rootSite("query nodes (identity/tags summary rows)", context);
+  const obj = expectObject(doc, site);
+  const rowsSite = at(site, "nodes");
+  return expectArray(requiredKey(obj, "nodes", site), rowsSite).map(
+    (element, index) => {
+      const rowSite = at(rowsSite, index);
+      const row = expectObject(element, rowSite);
+      return {
+        identity: expectNonEmptyString(
+          requiredKey(row, "identity", rowSite),
+          at(rowSite, "identity"),
+        ),
+        tags: expectStringArray(
+          requiredKey(row, "tags", rowSite),
+          at(rowSite, "tags"),
+        ),
+      };
+    },
+  );
 }
 
 function decodeNodeRow(value: unknown, site: DecodeSite): NodeRow {
