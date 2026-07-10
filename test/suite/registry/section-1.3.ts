@@ -23,7 +23,6 @@
 // terminator) still passes; every other staged construct lies outside the
 // widened window, so a finding attributed to the wrong construct fails.
 
-import { Buffer } from "node:buffer";
 import type { Finding } from "../../helpers/adapters/index.js";
 import {
   assertReportMentions,
@@ -39,6 +38,7 @@ import {
   assertFindingLocated,
   buildFindings,
   buildOk,
+  byteWindow,
   runJson,
   sortedIdentities,
 } from "./support.js";
@@ -53,15 +53,6 @@ export default defineConfig({
   }
 })
 `;
-
-/** A construct's byte window: its own range, end-widened by one byte. */
-function byteWindow(
-  prefix: string,
-  construct: string,
-): { start: number; end: number } {
-  const start = Buffer.byteLength(prefix, "utf8");
-  return { start, end: start + Buffer.byteLength(construct, "utf8") + 1 };
-}
 
 /** Stage one single-file workspace and collect its `build --json` findings. */
 async function findingsOf(

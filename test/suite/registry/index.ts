@@ -15,9 +15,11 @@
 import { ProductTestSuite } from "../../helpers/registry.js";
 import { section11to12Tests } from "./section-1.1-1.2.js";
 import { section13Tests } from "./section-1.3.js";
+import { section14Tests } from "./section-1.4.js";
 
 export const productTestSuite = new ProductTestSuite([
   // Section registration modules are spread here as they are implemented.
   ...section11to12Tests,
   ...section13Tests,
+  ...section14Tests,
 ]);

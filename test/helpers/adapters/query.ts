@@ -33,6 +33,7 @@ import type {
   NodeHashes,
   NodeReport,
   NodeRow,
+  NodeSummary,
   ReachableReport,
   SourceRange,
 } from "./model.js";
@@ -159,6 +160,27 @@ export function decodeNodeReport(doc: unknown, context?: string): NodeReport {
       requiredKey(edges, "outgoing", edgesSite),
       at(edgesSite, "outgoing"),
     ),
+  };
+}
+
+/**
+ * Minimal `query node` decoding — identity and tags only (T1.4-2, T1.4-4).
+ * Those tests are in CERTIFICATIONS.md §CONF-VALID's scope, which pins the
+ * fixture product's query surface to reporting identity, tags, and
+ * metadataHash: decoding the full node report would demand information the
+ * scoped fixture never promises. The two keys read here are the `query node`
+ * shape's own (see the ASSUMED SHAPE above); everything else in the document
+ * is ignored, not validated.
+ */
+export function decodeNodeSummary(doc: unknown, context?: string): NodeSummary {
+  const site = rootSite("query node (identity/tags summary)", context);
+  const obj = expectObject(doc, site);
+  return {
+    identity: expectNonEmptyString(
+      requiredKey(obj, "identity", site),
+      at(site, "identity"),
+    ),
+    tags: expectStringArray(requiredKey(obj, "tags", site), at(site, "tags")),
   };
 }
 

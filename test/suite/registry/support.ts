@@ -7,6 +7,7 @@
 // workspace root (H-1/H-2), assert exact exit codes (H-5), and reject a
 // product only via diagnosed assertion failures (H-8).
 
+import { Buffer } from "node:buffer";
 import type { Finding, GraphEdge } from "../../helpers/adapters/index.js";
 import { decodeFindingsReport } from "../../helpers/adapters/index.js";
 import {
@@ -108,6 +109,22 @@ export function assertConditionCounts(
     render(expected),
     `${context}: reported condition identities (SPEC.md 14)`,
   );
+}
+
+/**
+ * A staged construct's byte window within a `prefix + construct + suffix`
+ * fixture whose parts are known exactly: the construct's own byte range,
+ * end-widened by one byte so a product reporting a line-granular location
+ * (last construct line plus its terminator) still passes. Fixtures keep every
+ * other staged construct outside the widened window, so a finding attributed
+ * to the wrong construct fails.
+ */
+export function byteWindow(
+  prefix: string,
+  construct: string,
+): { start: number; end: number } {
+  const start = Buffer.byteLength(prefix, "utf8");
+  return { start, end: start + Buffer.byteLength(construct, "utf8") + 1 };
 }
 
 /** What a finding must identify about its source (SPEC.md 14 preamble). */

@@ -36,6 +36,7 @@ import {
   decodeNextReport,
   decodeNodeReport,
   decodeNodeRowsReport,
+  decodeNodeSummary,
   decodeReachableReport,
   decodeSessionListReport,
   decodeSessionStatusReport,
@@ -446,6 +447,35 @@ const DECODERS: readonly DecoderSpec[] = [
         label: "edge missing its target",
         doc: omit(GOOD_NODE, "edges", "incoming", 0, "to"),
       },
+    ],
+  },
+  {
+    name: "query node (identity/tags summary)",
+    decode: decodeNodeSummary,
+    good: GOOD_NODE,
+    verify: (decoded: ReturnType<typeof decodeNodeSummary>) => {
+      expect(decoded.identity).toBe("specs/A.mdx#login");
+      expect(decoded.tags).toEqual(["auth", "v2"]);
+    },
+    alsoGood: [
+      {
+        // The point of the summary decoder: a document carrying only the
+        // CONF-VALID-scoped query surface decodes — nothing beyond identity
+        // and tags is demanded of the fixture product (CERTIFICATIONS.md
+        // §CONF-VALID; T1.4-2, T1.4-4).
+        label: "a document carrying only the scoped summary fields",
+        doc: { identity: "specs/A.mdx#root-only", tags: [] },
+        verify: (decoded: ReturnType<typeof decodeNodeSummary>) => {
+          expect(decoded.identity).toBe("specs/A.mdx#root-only");
+          expect(decoded.tags).toEqual([]);
+        },
+      },
+    ],
+    bad: [
+      { label: "missing identity", doc: omit(GOOD_NODE, "identity") },
+      { label: "empty identity", doc: put(GOOD_NODE, "", "identity") },
+      { label: "missing tags", doc: omit(GOOD_NODE, "tags") },
+      { label: "non-string tag", doc: put(GOOD_NODE, [3], "tags") },
     ],
   },
   {

@@ -107,6 +107,17 @@ export interface NodeRow {
   readonly coverage?: string;
 }
 
+/**
+ * Identity-and-tags summary of a `query node` document — the minimal decoding
+ * for tests certified against fixtures whose scoped query surface reports
+ * only identity, tags, and metadataHash (CERTIFICATIONS.md §CONF-VALID:
+ * T1.4-2, T1.4-4).
+ */
+export interface NodeSummary {
+  readonly identity: string;
+  readonly tags: readonly string[];
+}
+
 /** `query reachable` (T11-5): existence plus one shortest witness path. */
 export interface ReachableReport {
   readonly reachable: boolean;
