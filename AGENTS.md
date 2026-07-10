@@ -8,6 +8,7 @@ Build, test, and run instructions for this repository (nothing else belongs in t
 - Typecheck both programs: `npm run typecheck` (`src/tsconfig.json`, then `test/tsconfig.json`; the harness is not typechecked by Vitest at run time). `test/fixtures/` is excluded from the harness typecheck: fixture projects are data compiled or executed at test run time and may contain deliberate type errors (e.g. the S-4 fixture).
 - Consumer fixture programs are compiled through the harness's TypeScript tooling driver (`test/helpers/tooling.ts`), which resolves `@types/node` from this repository's own `node_modules` — `npm ci` (dev dependencies included) must have run for consumer compilation to work.
 - Full test suite (TEST-SPEC sections 1–17, certification included; the Linux CI leg): `npm test`. Build the product first — tests invoke the built executable.
+- Run a subset of a test project by appending file paths, e.g. `npx vitest run --config test/vitest.config.ts --project suite test/suite/section-1.1-1.2.test.ts` — the way to observe new product-facing tests failing-as-diagnosed against the stub product (Phase 9 red-green).
 - Running tests also requires the system `git` executable on PATH: harness fixtures script local git repositories (`test/helpers/workspace.ts`). No git configuration is needed — the builder isolates all ambient git config and identity.
 - Harness self-tests and certification only (TEST-SPEC 17): `npm run test:self`.
 - Windows-leg subset (TEST-SPEC E-6; run by the Windows CI job): `npm run test:windows`.

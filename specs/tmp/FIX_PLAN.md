@@ -21,7 +21,6 @@ Planned 2026-07-10 from the Phase 9 iteration-1 compliance panel (TEST-SPEC.md a
 
 Each task implements exactly the named TEST-SPEC.md tests, to their full text (arms included). Default verification per Conventions.
 
-- [ ] **SUITE-01 — §1.1–1.2:** T1.1-1, T1.1-2, T1.1-3, T1.2-1, T1.2-2, T1.2-3 (requirement sections, tag equivalence, self-closing leaves, implicit root; T1.2-2 consumes the generated module — needs HARNESS-05).
 - [ ] **SUITE-02 — §1.3:** T1.3-1…T1.3-6 (missing id 14.1, structural rule 14.2, level skipping, top-level segment count, duplicate IDs 14.3, 14.1-masks-14.2). CONF-VALID in-scope: keep fixtures within CERTIFICATIONS.md §CONF-VALID's scope (single spec group of `.mdx` with `id`/`tags` only; T1.3-5's cross-file arm multi-file).
 - [ ] **SUITE-03 — §1.4:** T1.4-1…T1.4-4 (segment validity matrix incl. exact control/whitespace representatives, boundary code points U+00A0/U+0085/U+2028 valid, non-identifier segments via bracket access — needs HARNESS-05 — and tag validity). CONF-VALID in-scope (T1.4-1, T1.4-2, T1.4-4); byte-exact staging via HARNESS-01 so 14.4 (not 14.20) is at stake.
 - [ ] **SUITE-04 — §1.5:** T1.5-1…T1.5-3 (workspace-relative `/`-separated identities from any cwd; `#`/non-UTF-8 discovered paths → 14.19, Linux-leg staging; `path#id` vs bare `path` addressing). T1.5-1/T1.5-3 rerun on the Windows leg via CI-01.

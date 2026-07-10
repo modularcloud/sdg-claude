@@ -13,9 +13,9 @@
 // Duplicate IDs across modules fail here at import time.
 
 import { ProductTestSuite } from "../../helpers/registry.js";
+import { section11to12Tests } from "./section-1.1-1.2.js";
 
 export const productTestSuite = new ProductTestSuite([
-  // Section registration modules are spread here as they are implemented,
-  // e.g.: ...section01Tests,
-  // (none yet — the first SUITE-*/PROP-* task adds the first module).
+  // Section registration modules are spread here as they are implemented.
+  ...section11to12Tests,
 ]);
