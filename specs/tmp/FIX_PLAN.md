@@ -21,7 +21,6 @@ Planned 2026-07-10 from the Phase 9 iteration-1 compliance panel (TEST-SPEC.md a
 
 Each task implements exactly the named TEST-SPEC.md tests, to their full text (arms included). Default verification per Conventions.
 
-- [ ] **SUITE-06 — §2.1:** T2.1-1…T2.1-5 (valid imports, specifier-form and binding-form 14.15 matrices, unused import records no edges, import cycles 14.9).
 - [ ] **SUITE-07 — §2.2–2.3:** T2.2-1…T2.2-5, T2.3-1, T2.3-2 (`d` forms, module-as-target, duplicate collapse, empty array metadataHash parity, not rendered; `text(...)` embedding byte-asserted with `embeds` edge, string form, root targets).
 - [ ] **SUITE-08 — §2.4:** T2.4-1…T2.4-4 (static accepted forms; dynamic forms → 14.8 in `d` and `text(...)`; arity; segment-exact computed access with 14.5/14.6/14.7 arms and a TS type-error arm — needs HARNESS-05).
 - [ ] **SUITE-09 — §2.5–2.6:** T2.5-1…T2.5-3, T2.6-1…T2.6-3 (coverage attribute default/none/values 14.17; tag splitting, duplicate/empty collapse to omitted metadataHash, tag semantics). CONF-VALID in-scope: T2.6-1, T2.6-2.
