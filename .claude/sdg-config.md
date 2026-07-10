@@ -8,4 +8,7 @@ Developer-owned. Selects which variant of each configurable behavior this projec
 - **engineering: ralph**
   How Phases 9–10 execute. `ralph` (default; PROCESS.md's harness-agnostic loop, bound in CLAUDE-PROCESS.md §7) or `workflow` (`.claude/prompts/modes/engineering/workflow.md`; a dynamic-workflows-native build — requires the Workflow tool in the running environment). Either way the completion standard is identical: full compliance review, all tests and checks green locally and in CI, code review resolved, red-green separation intact.
 
+- **observer: none**
+  Optional progress telemetry. `none` (default — nothing loads, nothing emits) or `tracker` (`.claude/prompts/modes/observers/tracker.md` — streams status events and plain-language summaries to the dashboard endpoint in `SDG_OBSERVER_URL`; strictly fail-open, never blocks the process).
+
 To add a custom variant: write a new self-contained file in the matching `modes/` directory (its reader sees only that file) and point the key at its name.
