@@ -1,0 +1,15 @@
+# SPEC.md problems
+
+Blocking problems found in `specs/SPEC.md` during later phases (PROCESS.md — Identifying Spec Problems).
+
+## 2026-07-10 — §4.5 vs §8: "a root marker grants no coverage" contradicts coverage reachability once a root is a dependency-edge source
+
+Found while refining `specs/TEST-SPEC.md` (Phase 6, iteration 5, review item I3).
+
+**Premise (unambiguous in SPEC.md):** a top-level `{text(...)}` outside any section is a permitted construct (2.7); its containing section is the file's implicit root (2.3, 1.2), so it records an `embeds` edge whose source is the root, entering the root's effectiveHash (5.5). Root nodes are also group members — 8.1 excludes roots from the required set explicitly, implying they are otherwise nodes of their groups — so a spec-group boundary contains its files' roots. The root can therefore stand at the start or in the middle of the paths §8 defines.
+
+**Contradiction:** SPEC 8 defines coverage as reachability over dependency edges — "a path of one or more edges" in transitive mode — and names exactly one path exclusion (`contains`); 8.1 excludes roots as targets only. SPEC 4.5 states "because roots are never coverage targets, a root marker grants no coverage", an absolute claim whose stated justification supports only coverage *of the root*. On a constructible workspace the two prescribe opposite outcomes: a code-group boundary file holds a bare marker to spec file B's root (`references` code → B-root, 4.5); B holds a top-level `{text(A.x)}` (`embeds` B-root → A#x); A#x is a required target of a `transitive` profile whose `edgeKinds` include `references` and `embeds`. By §8's letter, the path code → B-root → A#x covers A#x; by §4.5's sentence, the root marker grants no coverage in any profile. Both readings are defensible, they disagree on an observable coverage report, and a test pinning either direction would add or remove a product requirement (PROCESS.md: TEST-SPEC.md MUST NOT do either). The same unpinned question arises with no marker at all: a spec-group boundary containing B makes B's root a boundary node whose outgoing `embeds` edge is, by §8's letter, a one-edge covering path for A#x even in `direct` mode.
+
+**Resolution needed in SPEC.md — decide and state:** whether root nodes participate in coverage paths, as boundary members and as intermediates. If yes, scope 4.5's sentence to coverage of the root itself. If no, state the exclusion in §8 alongside the `contains` exclusion and reconcile 4.5's sentence with it. If root-sourced dependency edges are unintended altogether, restrict top-level `{text(...)}` in 2.7/2.3 instead. Design stake either way: if root markers grant transitive coverage through root-sourced edges, one bare root marker covers everything the document embeds.
+
+**Held back in TEST-SPEC.md pending resolution:** tests for the root as dependency-edge source — the root-sourced `embeds` edge in `query edges` (2.3); root effectiveHash and `upstream-changed` sensitivity to the embedded target (5.5, 5.6); coverage paths through or from roots (8); and the scope of T4.5-2's "grants no coverage in any profile" (4.5).
