@@ -264,6 +264,8 @@ Ambiguities, factual errors, and other issues only count as blocking issues if t
 ## Ralph Loop
 Engineer is run in a loop until it achieves its goal (to implement either the product or test harness), with fresh context in each iteration. Below is what it does in each iteration.
 
+*Note: A custom engineering workflow MAY be configured in place of the ralph loops in phases 9 and 10, provided it upholds the same completion standard — full spec-compliance review by multiple subagents, all required tests and checks passing locally and in CI, code review resolved — and keeps test harness implementation separate from product implementation.*
+
 **Notes:**
 1. "finishes the iteration" means that it commits any changes it made, pushes to the remote branch, performs no further work, and then ends the current iteration. This doesn't mean the ralph loop is done, it means that a new iteration will take over where it left off.
 2. Determining if the implementation is in full spec compliance requires using multiple subagents to comprehensively review the relevant spec and implemented code to subjectively determine if the code fully meets all requirements. Aside from the agent reviewing the implementation and spec, the implementation must pass all required tests locally and in CI. When implementing the test harness, this means all test harness self-tests must pass. When implementing the product, this means **all** tests must pass.

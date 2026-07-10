@@ -31,7 +31,8 @@ Confirm all of this landed — the process's Phase 0 audit refuses to run on a p
 - `specs/PROCESS.md`, `specs/CLAUDE-PROCESS.md`, `specs/PHILOSOPHY.md`, `specs/GOALS.md`, `specs/tmp/`, `specs/patches/`
 - `.claude/settings.json`
 - `.claude/agents/` — `sdg-reviewer.md`, `sdg-driver.md`, `sdg-engineer.md`, `sdg-specialist.md`
-- `.claude/prompts/` — `sdg-liaison.md`, `liaison-mode.md`, plus the `reviewer/`, `driver/`, `engineer/`, `specialist/` mission directories
+- `.claude/prompts/` — `sdg-liaison.md`, the `modes/` variant library, plus the `reviewer/`, `driver/`, `engineer/`, `specialist/` mission directories
+- `.claude/sdg-config.md` and `.claude/workflows/sdg-build.js`
 
 Anything missing → re-fetch rather than hand-writing it.
 
@@ -49,6 +50,7 @@ Two defaults are opinionated; surface them rather than silently proceeding if th
 
 - **Model.** The scaffold pins Claude Fable at max/high effort (`.claude/settings.json` and each agent's frontmatter). If this account lacks Fable access, downgrade `model:`/`effort:` there before starting — otherwise every agent spawn fails.
 - **Permissions.** `settings.json` sets `bypassPermissions`, because the process runs long and unattended and a stalled permission prompt is its worst failure mode. That assumes a sandboxed or disposable environment (Claude Code web/cloud, a container, a VM). If this is someone's primary machine, tell them and let them decide before continuing.
+- **Configuration.** The scaffold ships with `liaison-mode: cto` and `engineering: ralph` in `.claude/sdg-config.md`. Offer the alternatives — `pm` (Developer keeps the major technical decisions) and `workflow` (a dynamic-workflows-native build for the engineering phases; requires the Workflow tool in the environment that will run the process) — and update the config if the user wants them; otherwise leave the defaults.
 - **Web.** If the project will run on Claude Code web, tell the user to add `CLAUDE_CODE_FORK_SUBAGENT=1` to the repository's environment configuration on claude.ai/code. The scaffold's `settings.json` also sets it, but the platform-level variable is the reliable channel — without forked subagents, Liaison cannot inherit the conversation and the process halts at Phase 1 by design.
 
 ## 6. Hand off to the process
