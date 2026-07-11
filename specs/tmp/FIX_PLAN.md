@@ -21,7 +21,6 @@ Planned 2026-07-10 from the Phase 9 iteration-1 compliance panel (TEST-SPEC.md a
 
 Each task implements exactly the named TEST-SPEC.md tests, to their full text (arms included). Default verification per Conventions.
 
-- [ ] **SUITE-18 — §5.4:** T5.4-1, T5.4-2 (reintroduced identity with the journaled variant and both journal-position arms; spelling never hashes).
 - [ ] **SUITE-19 — §5.5:** T5.5-1…T5.5-6 (hash reporting/determinism; ownHash change matrix incl. the line-drop-toggle arm and the child-vs-embedding kind distinction; subtreeHash; effectiveHash per-edge pairs incl. the dedup-discriminating arm; metadataHash order-insensitivity; purity link).
 - [ ] **SUITE-20 — §5.6:** T5.6-1…T5.6-6 (`impact --base` category matrix against committed git baselines: leaf edit worked example, child add/remove, d-target edit, metadata-only, multiple flags, added/deleted convention).
 - [ ] **SUITE-21 — §6.1:** T6.1-1…T6.1-3 (journal lifecycle: absent after fresh `build`, appears on first rename/move, append-only byte-prefix, read commands never modify; entry determinism across identical directories; integrity 14.13 for garbage lines and dir/symlink-occupied path). CONF-CORE in-scope: T6.1-1, T6.1-2 — keep their fixtures within §CONF-CORE's scope (one spec group of importless `.mdx`; no `code`/`markdown`/`coverage`/`policy`; no git; mutating commands only `rename`, file-form `move`, mutating `review` with `create --strategy audit`).
