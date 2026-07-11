@@ -1,0 +1,143 @@
+# xspec Certifications
+
+This document specifies the fixture products that certify selected tests of `specs/TEST-SPEC.md` under the certification protocol of TEST-SPEC.md §17 (C-1, C-2). A **conformer** conforms to `specs/SPEC.md` within its stated scope, with the simplest behavior that does so. A **violator** is its conformer with exactly one specified behavioral deviation. A test is **certified** when it passes against the conformer and fails against each violator that targets it. Fixtures are implemented as part of the test harness and are driven through the identical blackbox surfaces as the product (C-2: an executable/workspace binding and nothing else); this document describes them only in terms of SPEC.md's interfaces, contracts, seams, and observability features and prescribes no implementation details.
+
+Selection is deliberately incomplete (PROCESS.md). A fixture exists here only where a vacuous pass is an elevated risk: negative and absence-of-effect tests whose staging or byte-compare wiring could silently miss the behavior under test, temporal behavior, tests routed through the `--test-hold` seam (SPEC.md 13.5), and the reachability of property tests' generated inputs. No Bug Report exists, so no fixture is justified empirically. Every test not named in an in-scope set below is deliberately uncertified (see Exclusions). There are no spec modules, so there are no module certification files.
+
+Each conformer entry states its **scope** — the SPEC.md behaviors and command surface it implements and the workspace shapes it accepts — and its **in-scope tests**: the named subset (C-1) the certification runner executes against the conformer and each of its violators. Every in-scope test passes against the conformer. Each violator entry states its scope (its conformer's), its single deviation, the tests it certifies, and its expected failures: exactly the certified tests fail against it, and every other in-scope test passes. Where TEST-SPEC.md leaves an in-scope test's fixture content open and an expected-failure set — or the conformer's ability to pass within scope — depends on the choice, the entry states that choice as a **staging constraint** — a condition certification imposes on the harness's fixture for the named test, binding alongside C-1.
+
+## CONF-CORE — operational core: exclusion seam, journal, durable files, review reads
+
+**Scope.** Workspaces with one configured spec group of `.mdx` sources without imports, embeddings, `d` props, or tags; no `code`, `markdown`, `coverage`, or `policy` keys; no git. Command surface: `build`; the read commands of 13.3 behaving per 12.0 over such workspaces (`check` with no findings on valid state, `ids`, `show`, `query`, `coverage` reporting zero profiles, the `review` read subcommands; `impact --base` without git is the exit-2 unreadable-baseline case of 6.3/12.0); `rename` and file-form `move` with journal append (6.1, 6.2); `review` with the `audit` strategy (10.6) through `create`, `resolve`, `split`, and the read subcommands, including read-time invalidation over the recorded state of 10.4 — a staging constraint: every mutating command the in-scope 13.5 tests drive is drawn from this surface — `rename`, file-form `move` (never the section form), and the mutating `review` subcommands with `create` under `--strategy audit` (never `--base` or `--coverage`). Contracts under certification: 6.1 journal form and write discipline, 10.4 read discipline, 13.4 durable-file protection, and 13.5 in full, `--test-hold` seam included. Content of derived files beyond path, byte-determinism, write discipline, and atomic visibility is out of scope.
+
+**In-scope tests:** T6.1-1, T6.1-2, T10.4-5, T13.4-5, T13.5-1, T13.5-2, T13.5-3, T13.5-4, T13.5-5.
+
+**Justification.** The in-scope 13.5 lock tests (T13.5-1–T13.5-4) route through the one seam SPEC.md declares, T13.5-5 through a concurrent polling reader, and all assert temporal behavior — contention, kill timing, write visibility — where a mis-choreographed harness passes against any product. T6.1-1, T13.4-5, and T10.4-5 are absence-of-effect assertions (byte-compares around commands), the suite's largest vacuous-pass surface: a mispositioned snapshot passes forever.
+
+### VIOL-CORE-NOLOCK
+
+* **Scope:** CONF-CORE.
+* **Deviation:** Mutating commands do not exclude one another. The hold file is still created before any modification and honored, but a second mutating command started while another runs or is held is not refused: it proceeds normally instead of failing with the usage error of 13.5/12.0.
+* **Certifies:** T13.5-2.
+* **Expected failures:** exactly T13.5-2 (the second command succeeds and modifies the workspace while the first is held) — a staging constraint: T13.5-2's excluded commands carry no `--test-hold`; given one at the holding command's hold path (harmless against the conformer, which refuses them before hold creation), they would under this deviation fail exit 2 on the occupied path without modifying anything, and the expected failure would never materialize. All other in-scope tests pass: T13.5-1 drives one mutating command, T13.5-3's two run sequentially (the second starts only after the first is killed), and T13.5-5's repeated `build`s are not mutating commands (13.5); T13.5-4's commands concurrent with the held mutator are non-mutating; the journal, durable-file, and review-read tests involve no concurrent mutators.
+
+### VIOL-CORE-EARLYWRITE
+
+* **Scope:** CONF-CORE.
+* **Deviation:** A mutating command performs its workspace modifications before creating the hold file: it acquires exclusivity, completes the operation's writes (journal append included), then creates the hold file, waits for its deletion, and exits normally.
+* **Certifies:** T13.5-1, T13.5-4.
+* **Expected failures:** exactly T13.5-1 (the workspace is not byte-identical while held; modification precedes the hold) and T13.5-4 (read commands run while a command is held observe the operation's result, not the prior state). All other in-scope tests pass: exclusivity is still acquired first, so T13.5-2's excluded command still fails without modifying anything — a staging constraint: T13.5-2's modifies-nothing compare brackets the excluded command alone, its snapshot taken while command 1 is already held, so this deviation's pre-hold writes stay outside the compare; a kill at the held point leaves the completed, consistent operation, and T13.5-3's subsequent mutating command — a staging constraint: one that succeeds whether or not the killed operation's writes landed, so not a retry of the same operation — still succeeds; writes remain atomic (T13.5-5); journal content, append-only form, and determinism are unchanged (T6.1-1, T6.1-2); durable-file and session-read discipline are unchanged (T13.4-5, T10.4-5).
+
+### VIOL-CORE-STALELOCK
+
+* **Scope:** CONF-CORE.
+* **Deviation:** Workspace exclusivity is not released by abnormal termination: after a mutating command's process is killed, every later mutating command in that workspace is refused with the usage error of 13.5/12.0. Normal completion still releases.
+* **Certifies:** T13.5-3.
+* **Expected failures:** exactly T13.5-3 (the subsequent mutating command after a kill is refused instead of succeeding). All other in-scope tests pass: no other in-scope test kills a mutating command, and normal completion behaves as the conformer.
+
+### VIOL-CORE-PARTIALWRITE
+
+* **Scope:** CONF-CORE.
+* **Deviation:** Derived-file writes are not atomic in their observable effect: while a derived file is being written, its path holds a strict prefix of the new content for a sustained interval — long relative to a concurrent reader's polling cadence — before the complete content appears. Durable files are unaffected.
+* **Certifies:** T13.5-5.
+* **Expected failures:** exactly T13.5-5 (the polling reader observes a partial file). All other in-scope tests pass: T13.5-4's storm arm asserts only termination and a final `build`'s byte-equality to a clean build, its held-phase reads precede any write, and every other test observes derived files only after commands complete; journal, session, and exclusion behavior are unchanged.
+
+### VIOL-CORE-CHATTYREADS
+
+* **Scope:** CONF-CORE.
+* **Deviation:** `build` and the read commands modify the journal: each such invocation that is not refused as a usage or configuration error (exit 2) appends one fixed line to `.xspec/journal`, creating the file when absent. Mutating commands, and the entries `rename`/`move` append, are unchanged.
+* **Certifies:** T6.1-1, T13.4-5.
+* **Expected failures:** exactly T6.1-1 (a journal file exists after `build` in a fresh workspace; the byte-compares around `build`, `check`, `coverage`, and `query` observe modification — in this git-less scope the `impact` invocation is refused exit 2 and appends nothing, and `review`'s compare observes modification only where the read subcommand chosen exits 0, as `review list` does) and T13.4-5 (its journal byte-compares under `build` and read commands fail). All other in-scope tests pass: T6.1-2 compares the entries of the same operation on identical workspace states, which remain byte-identical; T10.4-5 byte-compares the session file, which is untouched; the 13.5 tests assert hold, exclusion, and derived-file behavior, not journal bytes, and T13.5-2's byte-compare covers the refused mutating command, which appends nothing.
+* **Note:** the representative value of this violator for the suite's other never-modifies assertions (T12.0-11, T12.1-4, T13.3-3, T6.4-3, T6.5-4) holds insofar as those assertions share the compare-around-command machinery certified here; the Exclusions lean on exactly that condition.
+
+### VIOL-CORE-PERSISTREADS
+
+* **Scope:** CONF-CORE.
+* **Deviation:** Review reads persist read-time invalidation: when `status`, `next`, `show`, or `export` computes that a resolved item's recorded state differs from the current graph (10.4), it rewrites that item's stored status to `invalidated` in the session file. Reads over sessions with no stale resolution write nothing.
+* **Certifies:** T10.4-5.
+* **Expected failures:** exactly T10.4-5 (the session file is not byte-identical across a read that computes invalidation). All other in-scope tests pass under a staging constraint: T13.4-5's fixture sessions contain no stale resolution when its `build`-and-read byte-compares run — staleness under reads belongs to T10.4-5's fixture — and no other in-scope test reads a session with a stale resolution.
+
+## CONF-VALID — segment and tag validity
+
+**Scope.** Workspaces with one configured spec group of one or more `.mdx` sources whose sections carry `id` and `tags` props (multi-file: T1.3-5's cross-file duplicate-ID arm builds); no imports, embeddings, `d` props, code groups, `markdown`, `coverage`, `policy`, or git. Command surface: `build` with the error reporting of 14 for conditions 14.1–14.4 (file, location, condition identity, 14.2's statement of the expected form, exit codes per 12.0) and `query node`/`query nodes` reporting identity, tags, and metadataHash. Contracts under certification: 1.3, 1.4 (with the exact character classes of SPEC.md 1.4), 2.6 tag splitting, and the masking rule of 14.2.
+
+**In-scope tests:** T1.3-1, T1.3-2, T1.3-3, T1.3-4, T1.3-5, T1.3-6, T1.4-1, T1.4-2, T1.4-4, T2.6-1, T2.6-2, P-1.
+
+**Justification.** The 1.4 matrix is the suite's most staging-fragile negative surface: its fixtures place control characters, exotic whitespace, and boundary code points inside source bytes, where a staging accident yields a different error (14.20) and the assertion of failure passes vacuously against a product that never validates 1.4. P-1's value rests entirely on its generator reaching those classes — the criterion-(a) reachability case.
+
+### VIOL-VALID-CTRL
+
+* **Scope:** CONF-VALID.
+* **Deviation:** The control-character rule of 1.4 is not enforced for code points outside the whitespace class: segments and tags containing U+0000–U+0008, U+000E–U+001F, or U+007F are accepted as valid. Whitespace characters (U+0009–U+000D, U+0020) remain rejected in segments, and tag splitting is unchanged.
+* **Certifies:** T1.4-1, T1.4-4, P-1.
+* **Expected failures:** exactly T1.4-1 (its control-character representative arms U+0000, U+001F, U+007F build instead of failing 14.4), T1.4-4 (its control-character tag arms U+0000, U+007F build), and P-1 (generated segments/tags in the non-whitespace control class are accepted where 1.4 rejects them). All other in-scope tests pass: no other in-scope test stages non-whitespace control characters, and structural, duplicate, whitespace, forbidden-name, boundary-class, and tag-splitting behavior are unchanged.
+
+### VIOL-VALID-WIDE
+
+* **Scope:** CONF-VALID.
+* **Deviation:** U+00A0, U+0085, and U+2028 are treated as whitespace for 1.4 validity: a segment or tag containing any of them is rejected with 14.4. Tag splitting and all other classifications are unchanged.
+* **Certifies:** T1.4-2, T1.4-4, P-1.
+* **Expected failures:** exactly T1.4-2 (segments containing the three code points fail instead of building), T1.4-4 (its boundary arm — the same character classes applied to tags — fails), and P-1 (generated values containing the three code points are rejected where 1.4 accepts them). All other in-scope tests pass: T1.4-1 stages none of the three code points, and T2.6-1/T2.6-2 split only on the true whitespace characters of 1.4.
+
+## CONF-MD — Markdown compilation
+
+**Scope.** Spec-group workspaces of `.mdx` sources with imports (2.1, valid forms as staged), same-file and cross-file `text(...)` embeddings (2.3), MDX comments, mixed line terminators, and sections carrying the full prop set of 2.7 — `id`, `d` (local or external form, resolving as staged; 2.2), `coverage`, and `tags` (2.5, 2.6) — as T3-1's all-props removals stage them; `markdown` absent, `{ emit: false }`, and `{ emit: true }` with default emission next to each source (13.2); no code groups, no `coverage` or `policy` configuration keys, no git. Command surface: `build` with byte-exact Markdown output per 3, and `query node` reporting own and subtree text (1.6, defined through the rules of 3). Contracts under certification: 3 in full — removal, replacement, the line-drop rule, line terminators — and the emission scope of 7.3.
+
+**In-scope tests:** T3-1, T3-2, T3-3, T3-4, T3-5, T3-6, P-2, P-3.
+
+**Justification.** The line-drop rule is the subtlest pure contract in SPEC.md, and its discriminating fixtures depend on exact exotic bytes (boundary code points, lone-CR terminators) that tooling silently normalizes — a corrupted fixture passes vacuously in both directions. P-2's oracle is trusted by the property suite (S-6 checks its vectors; certification checks that generated documents actually reach the discriminating classes and that the property fails when the product deviates).
+
+### VIOL-MD-CLASS
+
+* **Scope:** CONF-MD.
+* **Deviation:** The line-drop rule classifies U+00A0, U+0085, and U+2028 as whitespace when deciding whether a line is left empty or whitespace-only — consistently in Markdown output and, through 1.6, in own and subtree text. A line left holding only those code points after removals is dropped with its terminator.
+* **Certifies:** T3-3, P-2.
+* **Expected failures:** exactly T3-3 (its class-boundary arms: lines left holding only U+00A0, U+0085, or U+2028 are dropped instead of kept) and P-2 (the oracle keeps such lines; generated content weighted toward the boundary code points reaches the divergence). All other in-scope tests pass: a staging constraint keeps the three code points off their fixtures' removal-affected lines, and P-3 compares the product's text values to its own compiled output, which the consistent deviation keeps equal.
+
+### VIOL-MD-CR
+
+* **Scope:** CONF-MD.
+* **Deviation:** A lone U+000D is not recognized as a line terminator by the line model of 3 — consistently in Markdown output and, through 1.6, in own and subtree text. CRLF and lone U+000A remain terminators; a lone U+000D is an ordinary in-line character.
+* **Certifies:** T3-4, P-2.
+* **Expected failures:** exactly T3-4 (its lone-CR arms: line boundaries, and therefore the drop rule's line extents, diverge byte-wise) and P-2 (generated documents over mixed terminators reach lone-CR lines where the oracle diverges). All other in-scope tests pass: a staging constraint keeps lone U+000D out of their fixtures — they use terminators the deviation leaves recognized — and P-3's internal consistency is preserved as in VIOL-MD-CLASS.
+
+## CONF-DISC — configuration-driven discovery
+
+**Scope.** Workspaces of trivial single-section `.mdx` sources whose file and directory names carry glob-significant bytes, plus, as T7-6 stages them, files at derived-classified paths and an import target unmatched by every group; spec groups with the glob grammar of 7 (a no-match group, and the empty `specs` and `code` maps, are valid with zero sources); imports of 2.1's single-default-binding form, resolving against the importing file's directory to a discovered source, an undiscovered target failing with 14.15; `markdown` with `emit: true` as T7-6's destination arm stages it, destinations classified by configuration alone (7.3); symbolic links present in the tree; no code groups (`code` appears only as the empty map), `coverage`, `policy`, or git; content of derived and emitted files beyond path is out of scope. A staging constraint: T7-6's exclusion arms are staged over spec groups — its `code` arm is the empty map — so the one exclusion rule of 13.4 is certified on its spec-group side. Command surface: `build` and `ids` (12.3) as the observation of the discovered set, the configuration-error behavior of 14.14/12.0 for patterns resolving outside the workspace root, and the source-error reporting of 14.15. Contracts under certification: glob semantics of 7 — `*`, `?`, `**`, byte-wise case-sensitive matching, dot-segment rule, every other character a literal — discovery's refusal to follow symbolic links, and the source exclusion of 13.4 (`.xspec.` names, `.xspec/` paths, and enabled emit destinations in no group).
+
+**In-scope tests:** T7-4, T7-5, T7-6.
+
+**Justification.** All three assert non-discovery — negative observations that pass vacuously when the staged names (bracket-bearing, multi-byte, dot-prefixed, link-mediated, derived-classified) never reach the matcher at all. They are also the canonical stock-dependency hazard: a product delegating to a common glob or filesystem-walking dialect satisfies every positive arm while violating the negative ones. T7-6's exclusion arms are the sharpest case: they carry no positive control — nothing observable separates matched-but-excluded from never-matched, so a glob that misses the staged derived paths (a wildcard stopped by the dot-segment rule short of `.xspec/`) passes forever — and they are the sole carrier of 13.4's source exclusion (T13.4-7 delegates wholly to T7-6).
+
+### VIOL-DISC-DIALECT
+
+* **Scope:** CONF-DISC.
+* **Deviation:** Glob patterns are interpreted in a common dialect in which `[` `]` bracket expressions and `{` `}` brace alternations are active metacharacters, instead of the literals 7 requires — a single deviation: one rule of 7 (every character outside `*`, `?`, and `**` is a literal) broken for one dialect's metacharacter subset. `*`, `?`, `**`, case sensitivity, and the dot-segment rule are unchanged.
+* **Certifies:** T7-4.
+* **Expected failures:** exactly T7-4 (its literal-metacharacter arms: `a[1].mdx` matches `a1.mdx` and fails to match the file named `a[1].mdx`; `b{a,c}.mdx` matches `ba.mdx`/`bc.mdx` and not the literal name). T7-5 and T7-6 pass: their patterns carry no bracket or brace characters, so their matching — and T7-6's exclusion — is unchanged.
+
+### VIOL-DISC-SYMLINK
+
+* **Scope:** CONF-DISC.
+* **Deviation:** Discovery follows symbolic links to existing files: a symbolic link to an existing file, at a workspace-relative path a spec-group glob matches, is discovered as a source (read through the link). Broken links remain ignored, and symbolic links to directories remain untraversed.
+* **Certifies:** T7-5.
+* **Expected failures:** exactly T7-5 (its file-link arms: a symlinked file matched by a glob is discovered, and workspace-external content behind such a link enters the discovered set). T7-4 and T7-6 pass: their fixtures stage no symbolic links. The broken-link and directory-link restrictions keep the ignored-links and cycle arms conforming, so T7-5 fails by assertion, not by hang.
+
+### VIOL-DISC-DERIVED
+
+* **Scope:** CONF-DISC.
+* **Deviation:** Discovery does not apply the source exclusion of 13.4: a path whose file name contains `.xspec.`, a file under `.xspec/`, or a file at an enabled Markdown emit destination, when matched by a spec-group glob, is treated as an ordinary match — a single deviation: one rule of 13.4 (derived files are never sources) dropped. Glob semantics, the dot-segment rule, link behavior, 14.19 for non-`.mdx` matches, and the import and empty-map rules are unchanged.
+* **Certifies:** T7-6.
+* **Expected failures:** exactly T7-6 (its exclusion arms: a staged `.xspec.`-named `.mdx` file matched by a glob enters the discovered set; a file under `.xspec/` is discovered where a pattern spells the dot segment literally; with emission enabled, a glob-matched file at a source's destination is discovered or, lacking `.mdx`, reported as 14.19 — each observably failing the arm's no-error non-discovery assertion; the import and zero-source arms are untouched, and the test fails on the exclusion arms alone). T7-4 and T7-5 pass under a staging constraint: their fixtures stage no `.xspec.`-bearing names, write no pattern naming `.xspec/`, and leave `markdown` absent — and their wildcard patterns cannot reach the conformer's own graph data past the unchanged dot-segment rule.
+
+## Exclusions
+
+Considered against the selection criteria and deliberately left uncertified; each may be revisited under criterion (b) on an empirically demonstrated miss.
+
+* **P-4, P-5, P-6** (hash laws, rename/move purity, baseline replay): a conformer passing their anchor tests requires substantially the whole graph, identity, and baseline engine — a near-complete second product — while the anchors themselves are positive, byte-asserted fixtures whose failure modes are loud, not vacuous.
+* **P-7**: its capture half requires policy machinery out of any lean scope; the glob half's staging hazard is certified through CONF-DISC on T7-4.
+* **P-8, P-9, P-10**: P-8 sweeps every command, exceeding any narrow conformer scope; P-9 asserts consistency invariants anchored by the deterministic 10.x fixtures; P-10's single-mutator schedules and kill accounting admit no deviation with an unambiguous expected-failure set — its reader half shares T13.5-5's polling machinery, certified via VIOL-CORE-PARTIALWRITE, and its seam choreography is certified via the CONF-CORE lock violators.
+* **T13.5-6, T13.5-7** (workspace isolation; interrupted mutation): squarely in criterion (a)'s temporal class, but P-10's rationale extends to both — neither admits a deviation with an unambiguous expected-failure set. Cross-workspace interference surfaces only when schedules overlap, and post-release kill damage lands nondeterministically; T13.5-7's operative assertion is disjunctive for exactly that reason (`check` passes or reports findings), so no single deviation fails it deterministically, and its held-point choreography is certified via the CONF-CORE lock violators. T13.5-6's isolation is additionally the harness's own H-1 obligation, exercised on every parallel run (E-3).
+* **Section 4 consumer-side and type-level tests**: their vacuous-pass hazard lives in the TypeScript tooling driver, which S-4 self-tests against a known non-xspec fixture; a conformer would need the full generated-module contract (skeleton, branding, documentation, navigation).
+* **T10.1-4 session-corruption arms**: the per-arm precision hazard is real, but the recorded-creation-parameters arm requires a baseline or coverage session, dragging git or coverage machinery into an otherwise lean scope.
+* **The remaining negative matrices and refusals (2.1 import negatives, 2.4, 2.7, 4.x imports and markers, 5.3 cycles, 6.1 journal integrity — T6.1-3, 6.3 baseline failures, 6.4/6.5 refusals — T6.5-6's refused self-move with its journal compare included, 7.x configuration validation, 10.1 session-name and non-session negatives, 12.0 usage errors, the 13.4 symlink write refusals and their byte-compares — T13.4-6, the 14.19/14.20 path and encoding negatives — T1.5-2 and T1.6-5, whose byte-level staging is exactly what S-2's builder round-trip self-tests, and the masking and reporter-matrix contracts of 14 — T14-3, T14-4)** and the remaining absence-of-effect sweeps (T12.0-11, T12.1-4, T12.2-3, T13.3-3, and T13.4-4's nothing-written-through-the-link compare): they share the double-invalidity, error-identity and masking, and compare-around structures certified representatively through CONF-VALID and VIOL-CORE-CHATTYREADS — representative insofar as those tests share the certified machinery (the VIOL-CORE-CHATTYREADS note's condition); certifying each would be completeness, which this document must not pursue.

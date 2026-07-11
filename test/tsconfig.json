@@ -1,0 +1,15 @@
+{
+  // The test harness program (TEST-SPEC.md; IMPLEMENTATION.md: Vitest).
+  // Typecheck only — Vitest transpiles at run time. This project must never
+  // import product code from src/: the harness drives the product exclusively
+  // as the built `xspec` executable in a subprocess (TEST-SPEC H-2).
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  // fixtures/ is excluded: fixture projects are data the harness compiles or
+  // executes at test run time (e.g. the S-4 fixture contains a deliberate
+  // type error the tooling driver must detect), not harness program code.
+  "include": ["./**/*.ts"],
+  "exclude": ["fixtures"]
+}

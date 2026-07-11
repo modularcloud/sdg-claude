@@ -1,0 +1,6 @@
+# Prettier applies to product and harness code only (IMPLEMENTATION.md:
+# coding style). SDG process documents and scaffolding are out of scope.
+/specs/
+/.claude/
+/sdg-bootstrap/
+/dist/

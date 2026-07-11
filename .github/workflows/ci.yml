@@ -1,0 +1,112 @@
+# GitHub Actions CI (TEST-SPEC.md section 18; CLAUDE-PROCESS.md section 9).
+#
+# Jobs:
+#
+#   harness-self   Linux. Harness self-tests and certification only (TEST-SPEC
+#                  17, C-1: certification results are part of the harness's CI
+#                  output). This is the signal that must be green before the
+#                  product exists (red-green): product-facing tests may still
+#                  fail while this job passes.
+#
+#   suite-linux    Linux. The full suite — sections 1–17, certification
+#                  included (E-1) — run with network access disabled after
+#                  dependency installation, so product invocations run with
+#                  network denied. Expected red until the product conforms to
+#                  SPEC.md; green is required from then on.
+#
+#   suite-windows  Windows. The E-6 platform-sensitive subset. The E-6
+#                  byte-identity comparison reads the Linux leg's
+#                  representative-fixture outputs from the e6-linux-outputs
+#                  artifact, exchanged through XSPEC_E6_EXCHANGE_DIR (written
+#                  by the harness on the Linux leg, read on the Windows leg).
+#
+# Local-only tests (E-2) form a separately invocable local suite
+# (`npm run test:local`) and are deliberately excluded here — never silently
+# skipped (H-9). That set is currently empty.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  harness-self:
+    name: Harness self-tests + certification (Linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Typecheck both programs (product and harness)
+        run: npm run typecheck
+      - name: Build the product
+        run: npm run build
+      - name: Run harness self-tests and certification (network disabled)
+        run: bash .github/scripts/run-without-network.sh npm run test:self
+
+  suite-linux:
+    name: Full suite (Linux, E-1)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build the product
+        run: npm run build
+      - name: Run the full suite (network disabled after setup, E-1)
+        run: bash .github/scripts/run-without-network.sh npm test
+        env:
+          XSPEC_E6_EXCHANGE_DIR: ${{ github.workspace }}/.e6-exchange
+      - name: Upload E-6 exchange outputs for the Windows leg
+        # No files exist until the harness writes the representative fixture's
+        # outputs into XSPEC_E6_EXCHANGE_DIR on this leg.
+        uses: actions/upload-artifact@v4
+        with:
+          name: e6-linux-outputs
+          path: .e6-exchange
+          if-no-files-found: ignore
+
+  suite-windows:
+    name: Windows leg (E-6 subset)
+    runs-on: windows-2025
+    timeout-minutes: 30
+    needs: suite-linux
+    # Run even when the Linux leg is red (e.g. before the product exists) so
+    # the Windows leg keeps reporting its own signal.
+    if: ${{ !cancelled() }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build the product
+        run: npm run build
+      - name: Download E-6 exchange outputs from the Linux leg
+        # The artifact does not exist until the Linux leg produces outputs; the
+        # harness's E-6 comparison must itself fail loudly when the exchange
+        # directory is missing while the product exists.
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: e6-linux-outputs
+          path: .e6-exchange
+      - name: Run the E-6 platform-sensitive subset
+        run: npm run test:windows
+        env:
+          XSPEC_E6_EXCHANGE_DIR: ${{ github.workspace }}/.e6-exchange
