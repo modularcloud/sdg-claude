@@ -21,7 +21,6 @@ Planned 2026-07-10 from the Phase 9 iteration-1 compliance panel (TEST-SPEC.md a
 
 Each task implements exactly the named TEST-SPEC.md tests, to their full text (arms included). Default verification per Conventions.
 
-- [ ] **SUITE-23 — §6.3:** T6.3-1…T6.3-4 (config-at-ref; absent journal both directions; replay composition; failure matrix at exit 2 incl. prefix violation, garbage current-journal line at `impact --base` and `review create --base` modifying nothing, invalid baseline sources, unresolvable ref, and the baseline-before-validation precedence arm).
 - [ ] **SUITE-24 — §6.4 + §6.6:** T6.4-1…T6.4-7, T6.6-1 (rename rewrites everywhere; minimal byte edits; validation refusals modify nothing; usage-error ordering and unparseable-origin masking; type-level references untouched; valid-workspace precondition; finishing regeneration byte-identical to fresh build; manual restructuring is discontinuity).
 - [ ] **SUITE-25 — §6.5:** T6.5-1…T6.5-6 (file form; section-form byte-exact edit rules incl. self-closing arms; re-identification and import add/remove exactness with byte determinism; refusal matrix modifying nothing; usage errors; identity-terms arms incl. refused exact self-move with journal compare).
 - [ ] **SUITE-26 — §7 basics:** T7-1…T7-3 (config location/upward search/`--config`/none → 14.14 exit 2; declarative-form matrix; keys matrix with omitted/empty/unknown arms and their stated observations).
