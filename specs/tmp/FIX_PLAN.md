@@ -21,7 +21,6 @@ Planned 2026-07-10 from the Phase 9 iteration-1 compliance panel (TEST-SPEC.md a
 
 Each task implements exactly the named TEST-SPEC.md tests, to their full text (arms included). Default verification per Conventions.
 
-- [ ] **SUITE-17 — §5.2–5.3:** T5.2-1, T5.3-1, T5.3-2 (all four edge kinds with duplicate collapse; cycle detection matrix with full cycle paths at `check`; `build` rejects dependency cycles 14.9).
 - [ ] **SUITE-18 — §5.4:** T5.4-1, T5.4-2 (reintroduced identity with the journaled variant and both journal-position arms; spelling never hashes).
 - [ ] **SUITE-19 — §5.5:** T5.5-1…T5.5-6 (hash reporting/determinism; ownHash change matrix incl. the line-drop-toggle arm and the child-vs-embedding kind distinction; subtreeHash; effectiveHash per-edge pairs incl. the dedup-discriminating arm; metadataHash order-insensitivity; purity link).
 - [ ] **SUITE-20 — §5.6:** T5.6-1…T5.6-6 (`impact --base` category matrix against committed git baselines: leaf edit worked example, child add/remove, d-target edit, metadata-only, multiple flags, added/deleted convention).
