@@ -21,7 +21,6 @@ Planned 2026-07-10 from the Phase 9 iteration-1 compliance panel (TEST-SPEC.md a
 
 Each task implements exactly the named TEST-SPEC.md tests, to their full text (arms included). Default verification per Conventions.
 
-- [ ] **SUITE-14 — §4.3–4.4:** T4.3-1, T4.3-2, T4.4-1, T4.4-2 (`text(node)` runtime value + `embeds` edge; string/dynamic args → 14.8; cross-module branding type error 14.11 with runtime throw naming both modules; aliased `text` per module).
 - [ ] **SUITE-15 — §4.5:** T4.5-1…T4.5-7 (marker semantics and runtime harmlessness, root markers, static rule 14.8, shadowing, sanctioned-uses 14.18 matrix, `text` statement position, type-level freedom).
 - [ ] **SUITE-16 — §4.6:** T4.6-1…T4.6-4 (attribution matrix over all named-unit forms incl. static blocks, plain property initializers, dotted namespaces; anonymous default; not-named-units incl. private members; duplicate chains `@2`).
 - [ ] **SUITE-17 — §5.2–5.3:** T5.2-1, T5.3-1, T5.3-2 (all four edge kinds with duplicate collapse; cycle detection matrix with full cycle paths at `check`; `build` rejects dependency cycles 14.9).
