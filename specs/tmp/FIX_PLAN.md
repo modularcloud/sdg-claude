@@ -21,7 +21,6 @@ Planned 2026-07-10 from the Phase 9 iteration-1 compliance panel (TEST-SPEC.md a
 
 Each task implements exactly the named TEST-SPEC.md tests, to their full text (arms included). Default verification per Conventions.
 
-- [ ] **SUITE-31 — §9 through 9.2:** T9-1, T9.1-1, T9.2-1…T9.2-5 (baseline plumbing; categories equal 5.6; directly/transitively impacted; deleted location; category independence; journal-mapped impact edges — the positive counterpart of T6.2-1).
 - [ ] **SUITE-32 — §9.3:** T9.3-1…T9.3-3 (ancestor collapsing; witness edge/path minimization incl. metadata terminus and `embeds`-over-`references` preference; deletion identities incl. the twice-reported reintroduced case).
 - [ ] **SUITE-33 — §10.1:** T10.1-1…T10.1-4 (session storage exact file set and determinism; name validity/case rules with `create`'s ASCII-case-insensitive refusal; non-session files ignored; the corruption matrix staged via HARNESS-04's adapter transformations — never fabricating a session file). T10.1-2/T10.1-3 single-casing probes rerun on the Windows leg (CI-01).
 - [ ] **SUITE-34 — §10.2–10.3:** T10.2-1…T10.2-4, T10.3-1, T10.3-2 (item fields; baseline fixing; actionability after loss; `current` reported-as-recorded with creation and presence arms; statuses; re-blocking).

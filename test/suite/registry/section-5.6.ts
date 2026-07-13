@@ -44,9 +44,14 @@ import type { ProductBinding } from "../../helpers/subprocess.js";
 import { TestWorkspace } from "../../helpers/workspace.js";
 import { assertSameJson, buildOk, expectExit } from "./support.js";
 
+// Several definitions below are exported for test/suite/registry/section-9.ts:
+// T9.1-1 asserts that requirement-level `impact` output equals the categories
+// and attributions of 5.6 over fixtures shared with T5.6-* (TEST-SPEC §9), so
+// it drives the same staging, fixture sources, and assertion machinery.
+
 // Minimal declarative configuration (SPEC 7): exactly one spec group. No code
 // groups exist in any fixture here, so no code location can be impacted.
-const SPECS_ONLY_CONFIG = `import { defineConfig } from "xspec"
+export const SPECS_ONLY_CONFIG = `import { defineConfig } from "xspec"
 
 export default defineConfig({
   specs: {
@@ -74,7 +79,7 @@ async function withWorkspace<T>(
  * `impact --base <ref> --json`: exit 0 (impact is informational, SPEC 9.3;
  * H-5) with exactly one JSON document, decoded as the impact report (H-3).
  */
-async function impactAgainst(
+export async function impactAgainst(
   product: ProductBinding,
   workspace: TestWorkspace,
   ref: string,
@@ -91,7 +96,7 @@ async function impactAgainst(
 }
 
 /** Expected attribution for one category of one node (module header, H-4). */
-interface ExpectedCategory {
+export interface ExpectedCategory {
   readonly category: ChangeCategory;
   /**
    * Attribution pinned by TEST-SPEC text: the merged `attributedTo` must
@@ -107,7 +112,7 @@ interface ExpectedCategory {
 }
 
 /** The complete expectation for one node identity of a fixture. */
-interface ExpectedNodeImpact {
+export interface ExpectedNodeImpact {
   /** Current identity; the (journal-mapped) baseline identity when deleted. */
   readonly identity: string;
   /** Whether entries naming the node must flag it deleted (default false). */
@@ -130,7 +135,7 @@ interface ExpectedNodeImpact {
  *   expected set exactly, each attribution checked per its expectation;
  * - no code location is impacted (these fixtures configure no code groups).
  */
-function assertImpactCategories(
+export function assertImpactCategories(
   report: ImpactReport,
   expectations: readonly ExpectedNodeImpact[],
   context: string,
@@ -311,26 +316,115 @@ const T1_ONLEAF_DEP = "specs/Deps.mdx#onleaf.dep";
 const T1_ONMID = "specs/Deps.mdx#onmid";
 const T1_ONMID_DEP = "specs/Deps.mdx#onmid.dep";
 
-const T1_DEPS_SOURCE = [
-  'import Tree from "./Tree.xspec"',
-  "",
-  '<S id="onleaf">',
-  "On-leaf holder text.",
-  "",
-  '<S id="onleaf.dep" d={Tree.top.mid.leaf}>',
-  "Depends on the edited leaf.",
-  "</S>",
-  "</S>",
-  "",
-  '<S id="onmid">',
-  "On-mid holder text.",
-  "",
-  '<S id="onmid.dep" d={Tree.top.mid}>',
-  "Depends on an ancestor on the path.",
-  "</S>",
-  "</S>",
-  "",
-].join("\n");
+// Parameterized by onmid.dep's `d` expression: T5.6-1 uses the single target
+// on the leaf-to-root path; T9.1-1's second arm edits the target list on this
+// shared fixture (metadata-changed with its upstream cascade, SPEC 5.6).
+const depsSource = (onmidD: string): string =>
+  [
+    'import Tree from "./Tree.xspec"',
+    "",
+    '<S id="onleaf">',
+    "On-leaf holder text.",
+    "",
+    '<S id="onleaf.dep" d={Tree.top.mid.leaf}>',
+    "Depends on the edited leaf.",
+    "</S>",
+    "</S>",
+    "",
+    '<S id="onmid">',
+    "On-mid holder text.",
+    "",
+    `<S id="onmid.dep" d={${onmidD}}>`,
+    "Depends on an ancestor on the path.",
+    "</S>",
+    "</S>",
+    "",
+  ].join("\n");
+
+const T1_DEPS_SOURCE = depsSource("Tree.top.mid");
+
+/**
+ * The worked-example fixture of T5.6-1 (SPEC 5.6's leaf-edit example) —
+ * exported because T9.1-1 asserts the categories and attributions of 5.6
+ * over fixtures shared with T5.6-* (TEST-SPEC §9, §5.6). File paths double
+ * as the file roots' identities (SPEC 1.5).
+ */
+export const workedExample = {
+  treeFile: T1_TREE,
+  depsFile: T1_DEPS,
+  /** Tree source, parameterized by the leaf's text run (the edited run). */
+  treeSource,
+  /** Deps source, parameterized by onmid.dep's `d` expression. */
+  depsSource,
+  identities: {
+    tree: T1_TREE,
+    top: T1_TOP,
+    mid: T1_MID,
+    leaf: T1_LEAF,
+    sib: T1_SIB,
+    sibInner: T1_SIB_INNER,
+    other: T1_OTHER,
+    deps: T1_DEPS,
+    onleaf: T1_ONLEAF,
+    onleafDep: T1_ONLEAF_DEP,
+    onmid: T1_ONMID,
+    onmidDep: T1_ONMID_DEP,
+  },
+} as const;
+
+/**
+ * The complete per-node expectation table for the worked example's leaf edit
+ * (SPEC 5.6's own worked example, 9.1) — asserted by T5.6-1 and, over the
+ * shared fixture, by T9.1-1.
+ */
+export function workedExampleLeafEditExpectations(): readonly ExpectedNodeImpact[] {
+  return [
+    // The one originating node: its own-text run was edited.
+    {
+      identity: T1_LEAF,
+      categories: [{ category: "changed", within: [T1_LEAF] }],
+    },
+    // Every ancestor: `descendant-changed` attributed to the leaf.
+    {
+      identity: T1_MID,
+      categories: [{ category: "descendant-changed", exact: [T1_LEAF] }],
+    },
+    {
+      identity: T1_TOP,
+      categories: [{ category: "descendant-changed", exact: [T1_LEAF] }],
+    },
+    {
+      identity: T1_TREE,
+      categories: [{ category: "descendant-changed", exact: [T1_LEAF] }],
+    },
+    // Sibling subtrees receive no category.
+    { identity: T1_SIB, categories: [] },
+    { identity: T1_SIB_INNER, categories: [] },
+    { identity: T1_OTHER, categories: [] },
+    // Dependents of nodes on the path, and their ancestors:
+    // `upstream-changed`, all attributed to the leaf.
+    {
+      identity: T1_ONLEAF_DEP,
+      categories: [{ category: "upstream-changed", exact: [T1_LEAF] }],
+    },
+    {
+      identity: T1_ONMID_DEP,
+      categories: [{ category: "upstream-changed", exact: [T1_LEAF] }],
+    },
+    {
+      identity: T1_ONLEAF,
+      categories: [{ category: "upstream-changed", exact: [T1_LEAF] }],
+    },
+    {
+      identity: T1_ONMID,
+      categories: [{ category: "upstream-changed", exact: [T1_LEAF] }],
+    },
+    {
+      identity: T1_DEPS,
+      categories: [{ category: "upstream-changed", exact: [T1_LEAF] }],
+    },
+  ];
+}
 
 const T5_6_1 = defineProductTest({
   id: "T5.6-1",
@@ -353,58 +447,7 @@ const T5_6_1 = defineProductTest({
           "T5.6-1 `impact --base <baseline> --json` after the leaf edit";
         assertImpactCategories(
           await impactAgainst(product, workspace, base, label),
-          [
-            // The one originating node: its own-text run was edited.
-            {
-              identity: T1_LEAF,
-              categories: [{ category: "changed", within: [T1_LEAF] }],
-            },
-            // Every ancestor: `descendant-changed` attributed to the leaf.
-            {
-              identity: T1_MID,
-              categories: [
-                { category: "descendant-changed", exact: [T1_LEAF] },
-              ],
-            },
-            {
-              identity: T1_TOP,
-              categories: [
-                { category: "descendant-changed", exact: [T1_LEAF] },
-              ],
-            },
-            {
-              identity: T1_TREE,
-              categories: [
-                { category: "descendant-changed", exact: [T1_LEAF] },
-              ],
-            },
-            // Sibling subtrees receive no category.
-            { identity: T1_SIB, categories: [] },
-            { identity: T1_SIB_INNER, categories: [] },
-            { identity: T1_OTHER, categories: [] },
-            // Dependents of nodes on the path, and their ancestors:
-            // `upstream-changed`, all attributed to the leaf.
-            {
-              identity: T1_ONLEAF_DEP,
-              categories: [{ category: "upstream-changed", exact: [T1_LEAF] }],
-            },
-            {
-              identity: T1_ONMID_DEP,
-              categories: [{ category: "upstream-changed", exact: [T1_LEAF] }],
-            },
-            {
-              identity: T1_ONLEAF,
-              categories: [{ category: "upstream-changed", exact: [T1_LEAF] }],
-            },
-            {
-              identity: T1_ONMID,
-              categories: [{ category: "upstream-changed", exact: [T1_LEAF] }],
-            },
-            {
-              identity: T1_DEPS,
-              categories: [{ category: "upstream-changed", exact: [T1_LEAF] }],
-            },
-          ],
+          workedExampleLeafEditExpectations(),
           label,
         );
       },
