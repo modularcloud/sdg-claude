@@ -21,7 +21,6 @@ Planned 2026-07-10 from the Phase 9 iteration-1 compliance panel (TEST-SPEC.md a
 
 Each task implements exactly the named TEST-SPEC.md tests, to their full text (arms included). Default verification per Conventions.
 
-- [ ] **SUITE-34 — §10.2–10.3:** T10.2-1…T10.2-4, T10.3-1, T10.3-2 (item fields; baseline fixing; actionability after loss; `current` reported-as-recorded with creation and presence arms; statuses; re-blocking).
 - [ ] **SUITE-35 — §10.4:** T10.4-1…T10.4-5 (per-kind relevant-hash sensitivity with controls; presence changes; context-set change; rename immunity with order-flip and reintroduction arms; reads never write — byte-identical session across reads computing invalidation). CONF-CORE in-scope: T10.4-5 — stage within §CONF-CORE's scope (audit-strategy sessions).
 - [ ] **SUITE-36 — §10.5:** T10.5-1…T10.5-6 (path-blocks generation per SPEC §15's worked change; blocking chains; metadata/dependency/code items incl. the added-target exclusion; total item order; re-derivation on `updated` with decomposition recursion; baseline recording).
 - [ ] **SUITE-37 — §10.6:** T10.6-1…T10.6-3 (audit generation git-less; order and blocking incl. absent-scope ordering; re-derivation on `updated` with `no-change` control).

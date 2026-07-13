@@ -47,6 +47,7 @@ import { section8Tests } from "./section-8.js";
 import { section9Tests } from "./section-9.js";
 import { section93Tests } from "./section-9.3.js";
 import { section101Tests } from "./section-10.1.js";
+import { section102to103Tests } from "./section-10.2-10.3.js";
 
 export const productTestSuite = new ProductTestSuite([
   // Section registration modules are spread here as they are implemented.
@@ -84,4 +85,5 @@ export const productTestSuite = new ProductTestSuite([
   ...section9Tests,
   ...section93Tests,
   ...section101Tests,
+  ...section102to103Tests,
 ]);

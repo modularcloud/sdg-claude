@@ -1084,6 +1084,18 @@ const DECODERS: readonly DecoderSpec[] = [
           });
         },
       },
+      {
+        label:
+          "absent context node carrying recorded text (SPEC 10.7 provenance, T10.2-3)",
+        doc: put(GOOD_ITEM, "recorded branch text\n", "context", 1, "text"),
+        verify: (decoded: ReturnType<typeof decodeItemReport>) => {
+          expect(decoded.context[1]).toEqual({
+            node: "specs/A.mdx#login.badCredentials",
+            present: false,
+            text: "recorded branch text\n",
+          });
+        },
+      },
     ],
     bad: [
       { label: "missing id", doc: omit(GOOD_ITEM, "id") },
@@ -1104,8 +1116,8 @@ const DECODERS: readonly DecoderSpec[] = [
         doc: omit(GOOD_ITEM, "scope", "present"),
       },
       {
-        label: "absent context node carrying text (contradiction)",
-        doc: put(GOOD_ITEM, "ghost text", "context", 1, "text"),
+        label: "absent context node carrying a source range (contradiction)",
+        doc: put(GOOD_ITEM, { start: 3, end: 9 }, "context", 1, "sourceRange"),
       },
       { label: "missing context", doc: omit(GOOD_ITEM, "context") },
       { label: "missing origin", doc: omit(GOOD_ITEM, "origin") },

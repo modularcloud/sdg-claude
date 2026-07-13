@@ -274,9 +274,12 @@ export interface SessionStatusRow {
 }
 
 /**
- * A node presented inside an item payload: identity, presence, and — for
- * present nodes where the kind's payload contract supplies one — text and
- * source range (T10.7-12; absent nodes are presented with no text).
+ * A node presented inside an item payload: identity, presence, and — where
+ * the kind's payload contract supplies one — text: read from the current
+ * graph for a present node, and for an absent node the recorded value under
+ * SPEC.md 10.7's provenance rule (a node contained in no recorded state, and
+ * a `code-impact` scope, carries none; T10.2-3, T10.7-12). A source range
+ * exists only for a present node (10.7, 1.7).
  */
 export interface NodeTextState {
   readonly node: string;

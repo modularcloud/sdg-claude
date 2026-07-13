@@ -28,8 +28,13 @@
 //            "origin": [ { "node", "before": Side, "after": Side } ],
 //            "baseline", "current" }
 //   NodeState = { "node", "present": bool, "text"?, "sourceRange"? }
-//     (text/sourceRange only when present — an absent node has no text)
-//   Side = { "present": bool, "text"? }   (text required iff present)
+//     (text optional either way: a present node's text is read from the
+//     current graph, an absent node's is the recorded value of SPEC 10.7's
+//     provenance rule — only a node contained in no recorded state, and a
+//     code-impact scope, carries none; sourceRange only when present, since
+//     an absent node has no current source)
+//   Side = { "present": bool, "text"? }   (text required iff present — the
+//     absent side of an origin before/after pair carries no text, SPEC 10.7)
 
 import type {
   ExportReport,
@@ -174,39 +179,43 @@ export function decodeSessionStatusReport(
 }
 
 /**
- * A node presented in a payload: identity plus presence; text and source
- * range only for present nodes (T10.7-12 — an absent node is presented with
- * no text, and a `code-impact` scope enters as identity and presence alone).
+ * A node presented in a payload: identity plus presence; text is optional for
+ * present and absent nodes alike (SPEC 10.7: a present node's text comes from
+ * the current graph, an absent node's is the recorded value under the
+ * provenance rule — a node contained in no recorded state, and a
+ * `code-impact` scope, carries none; T10.2-3, T10.7-12), while a source range
+ * exists only for a present node (SPEC 10.7, 1.7: an absent node has no
+ * current source).
  */
 function decodeNodeTextState(value: unknown, site: DecodeSite): NodeTextState {
   const obj = expectObject(value, site);
-  const node = expectNonEmptyString(
-    requiredKey(obj, "node", site),
-    at(site, "node"),
-  );
-  const present = expectBoolean(
-    requiredKey(obj, "present", site),
-    at(site, "present"),
-  );
-  if (!present) {
-    forbiddenKey(obj, "text", site, "an absent node is presented with no text");
-    forbiddenKey(
-      obj,
-      "sourceRange",
-      site,
-      "an absent node is presented with no source range",
-    );
-    return { node, present };
-  }
   const state: {
     node: string;
     present: boolean;
     text?: string;
     sourceRange?: NodeTextState["sourceRange"];
-  } = { node, present };
+  } = {
+    node: expectNonEmptyString(
+      requiredKey(obj, "node", site),
+      at(site, "node"),
+    ),
+    present: expectBoolean(
+      requiredKey(obj, "present", site),
+      at(site, "present"),
+    ),
+  };
   const text = optionalKey(obj, "text");
   if (text !== undefined) {
     state.text = expectString(text, at(site, "text"));
+  }
+  if (!state.present) {
+    forbiddenKey(
+      obj,
+      "sourceRange",
+      site,
+      "an absent node has no current source, so it is presented without a source range (SPEC 10.7, 1.7)",
+    );
+    return state;
   }
   const sourceRange = optionalKey(obj, "sourceRange");
   if (sourceRange !== undefined) {
