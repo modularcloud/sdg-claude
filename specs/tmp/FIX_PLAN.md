@@ -21,7 +21,6 @@ Planned 2026-07-10 from the Phase 9 iteration-1 compliance panel (TEST-SPEC.md a
 
 Each task implements exactly the named TEST-SPEC.md tests, to their full text (arms included). Default verification per Conventions.
 
-- [ ] **SUITE-26 — §7 basics:** T7-1…T7-3 (config location/upward search/`--config`/none → 14.14 exit 2; declarative-form matrix; keys matrix with omitted/empty/unknown arms and their stated observations).
 - [ ] **SUITE-27 — §7 discovery:** T7-4…T7-6 (glob semantics incl. byte-wise `é.mdx` probe, dot-segment rule, outside-root 14.14, literal `[1]`/`{a,c}`/`!`/`+(x)`; symlink non-discovery/non-traversal/cycle-no-hang; derived-file exclusion, import-adds-nothing, zero-source groups). CONF-DISC in-scope, staging constraints (§CONF-DISC, §VIOL-DISC-DERIVED): T7-6's exclusion arms staged over spec groups with `code` the empty map; T7-4/T7-5 fixtures stage no `.xspec.`-bearing names, no pattern naming `.xspec/`, and leave `markdown` absent. T7-4's `SPECS/*.mdx` single-casing probe reruns on the Windows leg (CI-01).
 - [ ] **SUITE-28 — §7.1–7.3:** T7.1-1, T7.2-1, T7.3-1 (file in two spec groups; spec∩code 14.14; markdown config matrix incl. `emit` required, `outDir`, and the classification-by-configuration-alone arm).
 - [ ] **SUITE-29 — §7.4–7.5:** T7.4-1, T7.4-2, T7.5-1…T7.5-6 (profile validation 14.14 matrix and semantics; rule validation matrix; forbidden/allowedOnly findings; selectors; captures incl. shortest-match determinism; build-vs-check 14.12).
