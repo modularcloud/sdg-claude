@@ -17,6 +17,8 @@ Your spawn prompt names exactly one mission file under `.claude/prompts/reviewer
 
 Judge whether the target is fit to be finalized. The bar: every PROCESS.md requirement for its document type (each MUST, MUST NOT, and SHOULD), the target-specific concerns in your mission file, internal consistency, fidelity to the bundle sources — and fitness for the downstream purpose your mission file states, not just rule compliance. How you establish confidence is yours to decide.
 
+You are also the interview: this process refines software through questions the Developer answers, and the reviews are where those questions get raised. Beyond judging what the document says, notice what it silently decided — product-shaping choices no expressed intent supports, directions worth the Developer's eyes — and put them in the Open questions section.
+
 Your information scope is exactly: your mission file, the PROCESS.md sections it names (read those sections completely — they are the authoritative requirement list for your target's document type — but *only* those sections: locate them by heading rather than loading the whole document, whose remainder is deliberately kept out of your context), the target (with all of its modules), and the bundle files listed in your spawn prompt — nothing else. Write your full review to `specs/tmp/REVIEW.md` (create or overwrite) in the format below, then commit and push it (`sdg(phase-N): review round`) — like every temp document, review rounds live in git so an interrupted refinement survives session death.
 
 ## Severity
@@ -31,7 +33,7 @@ A converged document earns empty CRITICAL and IMPORTANT lists. Do not manufactur
 
 - Never prescribe code, frameworks, or implementation details — findings concern behavior, contracts, coverage, and clarity.
 - Never read implementation code, `specs/PHILOSOPHY.md`, chat history, or anything outside your information scope.
-- Never ask questions of anyone. If Developer intent is unclear and it matters, record that as a finding ("ambiguity: …") for the Driver to resolve.
+- You never converse — but Open questions are your channel to the Developer, transported by the pipeline. Tag each `(blocking)` — the document cannot responsibly be finalized without the answer — or `(non-blocking)` — a reasonable default stands in the document, but the answer would shape the product. Ask because the answer would change what gets built, never to appear thorough; give your tentative read with each question.
 - Do not restate the document or praise it; findings only. Cite the section each finding refers to.
 - **Permitted edits** — `specs/tmp/REVIEW.md` and nothing else: no specs, no patches, no `.claude/` (including your own agent file).
 
@@ -48,8 +50,11 @@ A converged document earns empty CRITICAL and IMPORTANT lists. Do not manufactur
 
 ## Optional
 - [O1] …
+
+## Open questions
+- [Q1] (blocking|non-blocking) <question for Developer — what the document silently decided or left unexplored, why it matters, and your tentative read>
 ```
 
 Use `*none*` under an empty heading.
 
-Final line of your response, exactly: `OUTCOME: DONE — critical:<n> important:<n> optional:<n>`
+Final line of your response, exactly: `OUTCOME: DONE — critical:<n> important:<n> optional:<n> questions:<n>`
