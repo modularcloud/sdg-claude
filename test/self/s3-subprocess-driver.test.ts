@@ -315,6 +315,55 @@ test("argv reaches the child verbatim — no shell interpretation, empty and met
   expect(JSON.parse(result.stdout)).toEqual(payload);
 });
 
+test.runIf(onPosix)(
+  "raw-byte (Uint8Array) argv elements reach the child byte-verbatim via the POSIX trampoline — non-UTF-8 argument staging (T6.5-4, T12.0-5)",
+  async () => {
+    const { workspace } = await standin();
+    // `/bin/sh` itself is the known-behavior stand-in: `printf %s "$1"`
+    // emits its first positional parameter's exact bytes, so the child-side
+    // ground truth is unambiguous. The payload mixes invalid UTF-8 (0xFF, a
+    // truncated multibyte sequence) with a trailing newline — the byte the
+    // trampoline's command substitution would strip without its sentinel.
+    const shBinding: ProductBinding = {
+      label: "sh printf stand-in",
+      command: "/bin/sh",
+    };
+    const payload = Buffer.from([
+      0x73, 0x70, 0x65, 0x63, 0x73, 0x2f, 0xff, 0xc3, 0x2e, 0x6d, 0x64, 0x78,
+      0x0a,
+    ]);
+    const result = await runProduct(shBinding, {
+      cwd: workspace.root,
+      argv: ["-c", 'printf %s "$1"', "sh", new Uint8Array(payload)],
+    });
+    expect(result.exitCode).toBe(0);
+    expect(hex(result.stdoutBytes)).toBe(hex(payload));
+
+    // String elements around a byte element keep their order and values.
+    const mixed = await runProduct(shBinding, {
+      cwd: workspace.root,
+      argv: [
+        "-c",
+        'printf "%s|%s|%s" "$1" "$2" "$3"',
+        "sh",
+        "before",
+        new Uint8Array([0x2d, 0x80, 0x2d]),
+        "after $HOME",
+      ],
+    });
+    expect(mixed.exitCode).toBe(0);
+    expect(hex(mixed.stdoutBytes)).toBe(
+      hex(
+        Buffer.concat([
+          Buffer.from("before|"),
+          Buffer.from([0x2d, 0x80, 0x2d]),
+          Buffer.from("|after $HOME"),
+        ]),
+      ),
+    );
+  },
+);
+
 test("converts a hanging child into a diagnosed timeout failure and kills it (H-8: never a skip, never a harness hang)", async () => {
   const { workspace, binding } = await standin();
   const running = await startProduct(binding, {

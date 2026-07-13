@@ -10,10 +10,11 @@
 //   no test hard-codes the product path.
 // - Every invocation controls the working directory (required and absolute:
 //   each test runs the product inside its own workspace, H-1/H-2), argv
-//   (passed verbatim to the process, no shell interpretation), and the
-//   environment; it observes the exact exit code and stdout/stderr as
-//   separated byte streams (H-5). stdin is closed — SPEC.md commands are
-//   argv-driven.
+//   (passed verbatim to the process, no shell interpretation; raw-byte
+//   elements for non-UTF-8 arguments ride a POSIX trampoline — see
+//   `ArgvValue` and `resolveInvocation`), and the environment; it observes
+//   the exact exit code and stdout/stderr as separated byte streams (H-5).
+//   stdin is closed — SPEC.md commands are argv-driven.
 // - Robustness (H-8): a hanging child is killed and converted into a
 //   diagnosed timeout failure (never a skip, never a harness hang); a missing
 //   executable or working directory is a diagnosed per-test failure, not a
@@ -93,11 +94,20 @@ export function builtProductBinding(): ProductBinding {
   };
 }
 
+/**
+ * One argv element. Strings are passed to the child as their UTF-8 bytes; a
+ * `Uint8Array` declares the element as raw bytes — Linux-leg staging for
+ * arguments that are not valid UTF-8 (SPEC.md 6.5 destination paths, 12.0
+ * non-UTF-8 argv; TEST-SPEC T6.5-4, T12.0-5). Byte elements are POSIX-only
+ * and must not contain NUL (argv strings cannot); see `resolveInvocation`.
+ */
+export type ArgvValue = string | Uint8Array;
+
 export interface RunOptions {
   /** Per-test working directory — required and absolute (H-1, H-2). */
   readonly cwd: string;
   /** Arguments after the binding's prefix, passed verbatim (no shell). */
-  readonly argv?: readonly string[];
+  readonly argv?: readonly ArgvValue[];
   /**
    * Merged last, over the sanitized base and the binding's env; a value of
    * `undefined` removes the variable from the child's environment.
@@ -136,7 +146,10 @@ export async function startProduct(
   binding: ProductBinding,
   options: RunOptions,
 ): Promise<RunningProduct> {
-  const fullArgs = [...(binding.prefixArgs ?? []), ...(options.argv ?? [])];
+  const fullArgs: readonly ArgvValue[] = [
+    ...(binding.prefixArgs ?? []),
+    ...(options.argv ?? []),
+  ];
   const commandLine = describeCommand(binding, fullArgs, options.cwd);
 
   if (!path.isAbsolute(options.cwd)) {
@@ -163,7 +176,8 @@ export async function startProduct(
     }
   }
 
-  const child = spawn(binding.command, fullArgs, {
+  const invocation = resolveInvocation(binding.command, fullArgs, commandLine);
+  const child = spawn(invocation.command, invocation.args, {
     cwd: options.cwd,
     env: childEnvironment(binding, options),
     stdio: ["ignore", "pipe", "pipe"],
@@ -392,15 +406,83 @@ function excerpt(bytes: Buffer): string {
 
 function describeCommand(
   binding: ProductBinding,
-  fullArgs: readonly string[],
+  fullArgs: readonly ArgvValue[],
   cwd: string,
 ): string {
   const rendered = [binding.command, ...fullArgs].map(formatArg).join(" ");
   return `\`${rendered}\` [${binding.label}] (cwd: ${cwd})`;
 }
 
-function formatArg(arg: string): string {
+function formatArg(arg: ArgvValue): string {
+  if (typeof arg !== "string") {
+    return `<argv bytes 0x${Buffer.from(arg).toString("hex")}>`;
+  }
   return arg === "" || /[\s"'\\]/.test(arg) ? JSON.stringify(arg) : arg;
+}
+
+/**
+ * Resolve the actual spawn target for an invocation. An all-string argv
+ * spawns the command directly, exactly as before. An argv containing raw
+ * bytes (`ArgvValue` as `Uint8Array`) cannot pass through Node's string-only
+ * spawn API — any JS string encodes to *valid* UTF-8 — so it is routed
+ * through a POSIX `sh` trampoline: every string element travels untouched as
+ * a positional parameter (never interpreted), each byte element is
+ * reconstructed inside the shell with `printf` octal escapes (an appended
+ * sentinel protects trailing newlines from command-substitution stripping),
+ * and the target command is `exec`ed with the elements in their original
+ * order. The child therefore receives exactly the declared argv bytes, with
+ * no shell interpretation of any value (H-2). POSIX-only staging (TEST-SPEC
+ * T6.5-4, T12.0-5 gate themselves to the Linux leg); requesting byte argv on
+ * Windows, or with a NUL byte (argv strings cannot contain NUL), is a
+ * harness-usage error thrown as a plain `Error`.
+ */
+function resolveInvocation(
+  command: string,
+  fullArgs: readonly ArgvValue[],
+  commandLine: string,
+): { command: string; args: string[] } {
+  if (fullArgs.every((arg): arg is string => typeof arg === "string")) {
+    return { command, args: [...fullArgs] };
+  }
+  if (process.platform === "win32") {
+    throw new Error(
+      `byte (Uint8Array) argv elements are POSIX-only staging — Windows has no byte-argv channel; gate the arm to the Linux leg (TEST-SPEC T6.5-4, T12.0-5); command: ${commandLine}`,
+    );
+  }
+  const assignments: string[] = [];
+  const positionals: string[] = [command];
+  const execRefs: string[] = ['"${1}"'];
+  let byteIndex = 0;
+  for (const arg of fullArgs) {
+    if (typeof arg === "string") {
+      positionals.push(arg);
+      execRefs.push(`"\${${String(positionals.length)}}"`);
+    } else {
+      if (arg.includes(0)) {
+        throw new Error(
+          `byte argv element contains a NUL byte, which no argv string can carry (execve); command: ${commandLine}`,
+        );
+      }
+      const name = `xspec_arg_${String(byteIndex)}`;
+      byteIndex += 1;
+      assignments.push(
+        `${name}=$(printf '${octalEscape(arg)}x')`,
+        `${name}=\${${name}%x}`,
+      );
+      execRefs.push(`"\${${name}}"`);
+    }
+  }
+  const script = [...assignments, `exec ${execRefs.join(" ")}`].join("\n");
+  return { command: "/bin/sh", args: ["-c", script, "sh", ...positionals] };
+}
+
+/** Every byte as a 3-digit octal `printf` escape (all-ASCII, quote-safe). */
+function octalEscape(bytes: Uint8Array): string {
+  let out = "";
+  for (const byte of bytes) {
+    out += `\\${byte.toString(8).padStart(3, "0")}`;
+  }
+  return out;
 }
 
 /** Ambient variables never passed through implicitly (see module header). */

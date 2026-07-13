@@ -37,6 +37,7 @@ import { section61Tests } from "./section-6.1.js";
 import { section62Tests } from "./section-6.2.js";
 import { section63Tests } from "./section-6.3.js";
 import { section64Tests } from "./section-6.4.js";
+import { section65Tests } from "./section-6.5.js";
 import { section66Tests } from "./section-6.6.js";
 
 export const productTestSuite = new ProductTestSuite([
@@ -65,5 +66,6 @@ export const productTestSuite = new ProductTestSuite([
   ...section62Tests,
   ...section63Tests,
   ...section64Tests,
+  ...section65Tests,
   ...section66Tests,
 ]);
