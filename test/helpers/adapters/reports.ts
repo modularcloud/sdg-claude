@@ -236,6 +236,71 @@ export function decodeCoverageReport(
   return { profiles };
 }
 
+/**
+ * The four ignored-node exclusion reasons of SPEC.md 8.1/8.2 as canonical
+ * harness tokens, in the spec's fixed reporting order: root node,
+ * `coverage="none"`, non-leaf under `targets: "leaves"`, lacking every
+ * `targetTags` tag (T8.2-1).
+ */
+export const IGNORED_REASON_KINDS = [
+  "root",
+  "coverage-none",
+  "non-leaf",
+  "lacking-tags",
+] as const;
+export type IgnoredReasonKind = (typeof IGNORED_REASON_KINDS)[number];
+
+// ASSUMED SHAPE: each reported reason string names its SPEC.md 8.2 exclusion
+// distinctively — "root" for the root-node reason, "none" for the
+// `coverage="none"` reason, "leaf" for the non-leaf-under-`targets:
+// "leaves"` reason, "tag" for the lacking-every-`targetTags`-tag reason.
+// Adjust these patterns when the real product's reason tokens legitimately
+// differ (H-3: shape, never values — which reasons a node carries, and their
+// fixed order, remain value assertions in the tests).
+const IGNORED_REASON_PATTERNS: readonly {
+  readonly kind: IgnoredReasonKind;
+  readonly pattern: RegExp;
+}[] = [
+  { kind: "root", pattern: /root/i },
+  { kind: "coverage-none", pattern: /none/i },
+  { kind: "non-leaf", pattern: /leaf/i },
+  { kind: "lacking-tags", pattern: /tag/i },
+];
+
+/**
+ * Map an ignored node's reported reason strings onto the SPEC.md 8.2 reason
+ * identities, order-preserving (the fixed order is the tests' value
+ * assertion, T8.2-1). A reason matching no pattern or more than one is
+ * unrecognizable required information and fails loudly (H-3), never
+ * defaulting.
+ */
+export function classifyIgnoredReasons(
+  reasons: readonly string[],
+  context?: string,
+): IgnoredReasonKind[] {
+  const site = rootSite("coverage ignored-reasons", context);
+  return reasons.map((reason, index) => {
+    const matches = IGNORED_REASON_PATTERNS.filter((candidate) =>
+      candidate.pattern.test(reason),
+    );
+    if (matches.length !== 1) {
+      decodeFail(
+        at(site, index),
+        matches.length === 0
+          ? "a reason string classifiable as one SPEC.md 8.2 exclusion reason " +
+              '(root node, coverage="none", non-leaf under targets: "leaves", ' +
+              "lacking every targetTags tag)"
+          : "a reason string classifiable as exactly one SPEC.md 8.2 exclusion " +
+              `reason, not ambiguously as ${matches
+                .map((match) => match.kind)
+                .join(" and ")}`,
+        reason,
+      );
+    }
+    return matches[0]!.kind;
+  });
+}
+
 function decodeImpactCategory(
   value: unknown,
   site: DecodeSite,

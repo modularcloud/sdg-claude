@@ -24,6 +24,7 @@ import {
   ITEM_STATUSES,
   assertJsonKeysByteSorted,
   assertReportMentions,
+  classifyIgnoredReasons,
   conditionMention,
   decodeCoverageReport,
   decodeEdgesReport,
@@ -1280,6 +1281,34 @@ test("S-5: conditionMention distinguishes 14.2 from 14.20 in both directions", (
   expect(conditionMention("14.20").test("error 14.20: encoding")).toBe(true);
   expect(conditionMention("14.20").test("error 14.2: structure")).toBe(false);
   expectDiagnosed("not a condition identity", () => conditionMention("15.1"));
+});
+
+test("S-5: ignored-reason classifier maps SPEC 8.2 reason spellings in order and rejects the unrecognizable", () => {
+  // SPEC.md 8.2's own phrasings classify, order-preserving (the fixed order
+  // is the tests' value assertion, T8.2-1).
+  expect(
+    classifyIgnoredReasons(
+      [
+        "root node",
+        'coverage="none"',
+        'non-leaf under targets: "leaves"',
+        "lacking every targetTags tag",
+      ],
+      "spec phrasings",
+    ),
+  ).toEqual(["root", "coverage-none", "non-leaf", "lacking-tags"]);
+
+  // A reason matching no pattern is unrecognizable required information —
+  // rejected loudly, never defaulted (H-3).
+  const unknown = expectDiagnosed("unclassifiable reason", () =>
+    classifyIgnoredReasons(["excluded"], "unknown token"),
+  );
+  expect(unknown.message).toContain("unknown token");
+
+  // A reason matching more than one pattern is ambiguous — equally rejected.
+  expectDiagnosed("ambiguous reason", () =>
+    classifyIgnoredReasons(["root has none"], "ambiguous token"),
+  );
 });
 
 // --- T10.1-4 session-corruption staging ---------------------------------------
