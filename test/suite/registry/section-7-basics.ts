@@ -21,13 +21,13 @@
 // equal omission; unknown keys anywhere in the argument are 14.14.
 //
 // Conservative operationalizations (noted per H-3/H-4):
-// - 14.14 contract (`expectConfigurationError`): run with `--json`, exit 2
-//   exactly, byte-empty stdout (12.0: the exit-2 error prevents emitting the
-//   single JSON document; H-5), and a standard-error message matching
-//   /config/i — the actionable configuration-error message must identify the
-//   configuration as the failing subject, and any phrasing naming either the
-//   file (`xspec.config.ts`) or the condition ("configuration",
-//   "config…") qualifies; wording is otherwise free (H-3).
+// - 14.14 contract: `expectConfigurationError` (shared, ./support.ts) — run
+//   with `--json`, exit 2 exactly, byte-empty stdout (12.0: the exit-2 error
+//   prevents emitting the single JSON document; H-5), and a standard-error
+//   message matching /config/i — the actionable configuration-error message
+//   must identify the configuration as the failing subject, and any phrasing
+//   naming either the file (`xspec.config.ts`) or the condition
+//   ("configuration", "config…") qualifies; wording is otherwise free (H-3).
 // - T7-1 "no configuration reachable": the workspace is a fresh unique
 //   temporary directory (H-1) whose filesystem ancestors (the OS temp
 //   directory and its parents) hold no `xspec.config.ts`, so the upward
@@ -65,7 +65,7 @@ import {
 } from "../../helpers/assertions.js";
 import { defineProductTest } from "../../helpers/registry.js";
 import type { ProductTestEntry } from "../../helpers/registry.js";
-import type { ProductBinding, RunResult } from "../../helpers/subprocess.js";
+import type { ProductBinding } from "../../helpers/subprocess.js";
 import { runProduct, summarizeResult } from "../../helpers/subprocess.js";
 import { TestWorkspace } from "../../helpers/workspace.js";
 import type { WorkspaceDecl } from "../../helpers/workspace.js";
@@ -73,6 +73,7 @@ import {
   assertEdgeSetEqual,
   assertSameJson,
   buildOk,
+  expectConfigurationError,
   expectExit,
   runJson,
 } from "./support.js";
@@ -108,49 +109,6 @@ async function withWorkspace<T>(
   } finally {
     await workspace.dispose();
   }
-}
-
-/**
- * Run a command with `--json` and assert the SPEC 14.14 configuration-error
- * contract: exit 2 exactly (a usage error, 12.0), byte-empty stdout (the
- * exit-2 error prevents emitting the single JSON document; H-5), and an
- * actionable standard-error message identifying the configuration (module
- * header operationalization: /config/i).
- */
-async function expectConfigurationError(
-  product: ProductBinding,
-  workspace: TestWorkspace,
-  argv: readonly string[],
-  context: string,
-  cwd?: string,
-): Promise<RunResult> {
-  const result = await runProduct(product, {
-    cwd: cwd ?? workspace.root,
-    argv: [...argv, "--json"],
-  });
-  assertExitCode(
-    result,
-    2,
-    `${context} — a missing or invalid configuration is a configuration ` +
-      `error, reported by every command at configuration load as a usage ` +
-      `error (SPEC 14.14, 12.0)`,
-  );
-  assertStdoutEmpty(
-    result,
-    `${context} — under --json, stdout is byte-empty on exit 2: the ` +
-      `configuration error prevents emitting the single JSON document ` +
-      `(SPEC 12.0, H-5)`,
-  );
-  if (!/config/i.test(result.stderr)) {
-    fail(
-      `${context}: the configuration-error message on stderr must identify ` +
-        `the configuration as the failing subject (SPEC 14.14; 12.0: ` +
-        `configuration error messages are standard-error content) — any ` +
-        `phrasing naming xspec.config.ts or "configuration" qualifies ` +
-        `(H-3); got ${summarizeResult(result)}`,
-    );
-  }
-  return result;
 }
 
 /**

@@ -12,11 +12,12 @@ import type { Finding, GraphEdge } from "../../helpers/adapters/index.js";
 import { decodeFindingsReport } from "../../helpers/adapters/index.js";
 import {
   assertExitCode,
+  assertStdoutEmpty,
   fail,
   parseJsonStdout,
 } from "../../helpers/assertions.js";
 import type { ProductBinding, RunResult } from "../../helpers/subprocess.js";
-import { runProduct } from "../../helpers/subprocess.js";
+import { runProduct, summarizeResult } from "../../helpers/subprocess.js";
 import type { TestWorkspace } from "../../helpers/workspace.js";
 
 /** Run one product command with the workspace root as working directory. */
@@ -62,6 +63,51 @@ export async function runJson(
 ): Promise<unknown> {
   const result = await expectExit(product, workspace, argv, 0, context);
   return parseJsonStdout(result, context);
+}
+
+/**
+ * Run a command with `--json` and assert the SPEC.md 14.14 configuration-error
+ * contract: exit 2 exactly (a usage error, 12.0), byte-empty stdout (the
+ * exit-2 error prevents emitting the single JSON document; H-5), and an
+ * actionable standard-error message identifying the configuration as the
+ * failing subject — any phrasing naming either the file (`xspec.config.ts`)
+ * or the condition ("configuration", "config…") qualifies, so the
+ * operationalization is /config/i; wording is otherwise free (H-3).
+ */
+export async function expectConfigurationError(
+  product: ProductBinding,
+  workspace: TestWorkspace,
+  argv: readonly string[],
+  context: string,
+  cwd?: string,
+): Promise<RunResult> {
+  const result = await runProduct(product, {
+    cwd: cwd ?? workspace.root,
+    argv: [...argv, "--json"],
+  });
+  assertExitCode(
+    result,
+    2,
+    `${context} — a missing or invalid configuration is a configuration ` +
+      `error, reported by every command at configuration load as a usage ` +
+      `error (SPEC 14.14, 12.0)`,
+  );
+  assertStdoutEmpty(
+    result,
+    `${context} — under --json, stdout is byte-empty on exit 2: the ` +
+      `configuration error prevents emitting the single JSON document ` +
+      `(SPEC 12.0, H-5)`,
+  );
+  if (!/config/i.test(result.stderr)) {
+    fail(
+      `${context}: the configuration-error message on stderr must identify ` +
+        `the configuration as the failing subject (SPEC 14.14; 12.0: ` +
+        `configuration error messages are standard-error content) — any ` +
+        `phrasing naming xspec.config.ts or "configuration" qualifies ` +
+        `(H-3); got ${summarizeResult(result)}`,
+    );
+  }
+  return result;
 }
 
 /**
