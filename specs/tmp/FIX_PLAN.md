@@ -21,7 +21,6 @@ Planned 2026-07-10 from the Phase 9 iteration-1 compliance panel (TEST-SPEC.md a
 
 Each task implements exactly the named TEST-SPEC.md tests, to their full text (arms included). Default verification per Conventions.
 
-- [ ] **SUITE-40 — §11:** T11-1…T11-7 (JSON-only query surface via adapters: node, nodes filters, subtree/ancestors row contract, edges, reachable incl. zero-length-path and `--kinds contains` exit 2, identity resolution, ordering determinism).
 - [ ] **SUITE-41 — §12.0 I:** T12.0-1…T12.0-6 (`--json` everywhere sweep; stream separation; `--config` resolution; flag repetition; argument addressing incl. `\`-separator negative and non-UTF-8 argv Linux arm; case-and-bytes probes). T12.0-5 (less its Linux-only arm) and T12.0-6's probe rerun on the Windows leg (CI-01).
 - [ ] **SUITE-42 — §12.0 II:** T12.0-7…T12.0-12 (determinism sweep incl. irrelevant-env variation; shortest-path tie-break per command; exit-code partition table; check ordering cross-refs; git read-only byte-compare of `.git/` around every git-reading invocation; git-less operation sweep).
 - [ ] **SUITE-43 — §12.1–12.2:** T12.1-1…T12.1-4, T12.2-1…T12.2-3 (build products; no-policy; regeneration and orphan removal; failed build modifies nothing; check green path; per-family finding scope; check never refreshes).
