@@ -21,7 +21,6 @@ Planned 2026-07-10 from the Phase 9 iteration-1 compliance panel (TEST-SPEC.md a
 
 Each task implements exactly the named TEST-SPEC.md tests, to their full text (arms included). Default verification per Conventions.
 
-- [ ] **SUITE-29 — §7.4–7.5:** T7.4-1, T7.4-2, T7.5-1…T7.5-6 (profile validation 14.14 matrix and semantics; rule validation matrix; forbidden/allowedOnly findings; selectors; captures incl. shortest-match determinism; build-vs-check 14.12).
 - [ ] **SUITE-30 — §8:** T8-1…T8-5, T8.2-1 (direct/transitive modes, boundaries, boundary∩target overlap, root path exclusion with its coverage-scoped-exclusion arms, report contract incl. tie-break, ignored-reason order, `--check`, `--json` parity).
 - [ ] **SUITE-31 — §9 through 9.2:** T9-1, T9.1-1, T9.2-1…T9.2-5 (baseline plumbing; categories equal 5.6; directly/transitively impacted; deleted location; category independence; journal-mapped impact edges — the positive counterpart of T6.2-1).
 - [ ] **SUITE-32 — §9.3:** T9.3-1…T9.3-3 (ancestor collapsing; witness edge/path minimization incl. metadata terminus and `embeds`-over-`references` preference; deletion identities incl. the twice-reported reintroduced case).
