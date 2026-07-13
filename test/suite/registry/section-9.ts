@@ -60,8 +60,9 @@ import {
 import { assertSameJson, buildOk, expectExit } from "./support.js";
 
 // One spec group plus one code group (SPEC 7.2) for the impacted-code
-// fixtures of T9.2-*.
-const SPEC_AND_CODE_CONFIG = `import { defineConfig } from "xspec"
+// fixtures of T9.2-* — exported for test/suite/registry/section-9.3.ts, whose
+// witness-selection fixtures (T9.3-2) stage the same shape.
+export const SPEC_AND_CODE_CONFIG = `import { defineConfig } from "xspec"
 
 export default defineConfig({
   specs: {
@@ -96,8 +97,10 @@ async function withWorkspace<T>(
  * equal — compared order-insensitively via a canonical rendering (SPEC 9.2,
  * 9.3). A location missing from a group, present in the wrong group,
  * duplicated, or reported with a different edge or path is diagnosed.
+ * Exported for test/suite/registry/section-9.3.ts (T9.3-2 asserts the same
+ * whole-entry contract over its witness-minimization fixtures).
  */
-function assertImpactedCode(
+export function assertImpactedCode(
   report: ImpactReport,
   expected: {
     readonly direct: readonly ImpactedCodeEntry[];
@@ -134,9 +137,11 @@ function assertImpactedCode(
 
 /**
  * Read a workspace source file as UTF-8 text, failing diagnosed (H-8) when
- * the path does not hold a plain file.
+ * the path does not hold a plain file. Exported for
+ * test/suite/registry/section-9.3.ts (T9.3-3 stages manual edits on
+ * product-rewritten sources the same way).
  */
-async function readSourceText(
+export async function readSourceText(
   workspace: TestWorkspace,
   rel: string,
   context: string,
