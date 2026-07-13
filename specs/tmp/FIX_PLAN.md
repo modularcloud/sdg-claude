@@ -21,7 +21,6 @@ Planned 2026-07-10 from the Phase 9 iteration-1 compliance panel (TEST-SPEC.md a
 
 Each task implements exactly the named TEST-SPEC.md tests, to their full text (arms included). Default verification per Conventions.
 
-- [ ] **SUITE-36 — §10.5:** T10.5-1…T10.5-6 (path-blocks generation per SPEC §15's worked change; blocking chains; metadata/dependency/code items incl. the added-target exclusion; total item order; re-derivation on `updated` with decomposition recursion; baseline recording).
 - [ ] **SUITE-37 — §10.6:** T10.6-1…T10.6-3 (audit generation git-less; order and blocking incl. absent-scope ordering; re-derivation on `updated` with `no-change` control).
 - [ ] **SUITE-38 — §10.7 commands I:** T10.7-1…T10.7-6 (create flag exclusivity; recorded parameters; unresolvable baseline; coverage sessions; `list` byte-order/stored-status/corrupt contract; `status`).
 - [ ] **SUITE-39 — §10.7 commands II:** T10.7-7…T10.7-12 (`next` incl. fully-resolved and self-contained payload; `show`/`export`; `split` semantics incl. id retirement across strategies; `resolve`; coverage re-derivation; the full payload text contract byte-asserted per kind incl. absent-node provenance).
