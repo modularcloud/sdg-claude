@@ -21,7 +21,6 @@ Planned 2026-07-10 from the Phase 9 iteration-1 compliance panel (TEST-SPEC.md a
 
 Each task implements exactly the named TEST-SPEC.md tests, to their full text (arms included). Default verification per Conventions.
 
-- [ ] **SUITE-38 — §10.7 commands I:** T10.7-1…T10.7-6 (create flag exclusivity; recorded parameters; unresolvable baseline; coverage sessions; `list` byte-order/stored-status/corrupt contract; `status`).
 - [ ] **SUITE-39 — §10.7 commands II:** T10.7-7…T10.7-12 (`next` incl. fully-resolved and self-contained payload; `show`/`export`; `split` semantics incl. id retirement across strategies; `resolve`; coverage re-derivation; the full payload text contract byte-asserted per kind incl. absent-node provenance).
 - [ ] **SUITE-40 — §11:** T11-1…T11-7 (JSON-only query surface via adapters: node, nodes filters, subtree/ancestors row contract, edges, reachable incl. zero-length-path and `--kinds contains` exit 2, identity resolution, ordering determinism).
 - [ ] **SUITE-41 — §12.0 I:** T12.0-1…T12.0-6 (`--json` everywhere sweep; stream separation; `--config` resolution; flag repetition; argument addressing incl. `\`-separator negative and non-UTF-8 argv Linux arm; case-and-bytes probes). T12.0-5 (less its Linux-only arm) and T12.0-6's probe rerun on the Windows leg (CI-01).
