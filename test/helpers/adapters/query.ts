@@ -35,6 +35,7 @@ import type {
   NodeReport,
   NodeRow,
   NodeSummary,
+  NodeTextSummary,
   ReachableReport,
   SourceRange,
 } from "./model.js";
@@ -210,6 +211,34 @@ export function decodeNodeMetadataSummary(
     metadataHash: expectNonEmptyString(
       requiredKey(hashes, "metadataHash", hashesSite),
       at(hashesSite, "metadataHash"),
+    ),
+  };
+}
+
+/**
+ * `query node` decoded to the CONF-MD-scoped text surface — own and subtree
+ * text only (P-3; P-2's certification scope). CERTIFICATIONS.md §CONF-MD
+ * pins the fixture product's query surface to reporting own and subtree
+ * text (SPEC.md 1.6): demanding identity, hashes, or edges would reject a
+ * document the scope permits. Both texts may legitimately be empty (an
+ * empty leaf section, SPEC.md 1.1), so plain strings are demanded — absent
+ * or non-string values still fail loudly (H-3). Everything else in the
+ * document is ignored, not validated.
+ */
+export function decodeNodeTextSummary(
+  doc: unknown,
+  context?: string,
+): NodeTextSummary {
+  const site = rootSite("query node (own/subtree text summary)", context);
+  const obj = expectObject(doc, site);
+  return {
+    ownText: expectString(
+      requiredKey(obj, "ownText", site),
+      at(site, "ownText"),
+    ),
+    subtreeText: expectString(
+      requiredKey(obj, "subtreeText", site),
+      at(site, "subtreeText"),
     ),
   };
 }

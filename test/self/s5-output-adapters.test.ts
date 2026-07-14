@@ -40,6 +40,7 @@ import {
   decodeNodeRowsReport,
   decodeNodeSummary,
   decodeNodeSummaryRowsReport,
+  decodeNodeTextSummary,
   decodeReachableReport,
   decodeSessionListReport,
   decodeSessionStatusReport,
@@ -522,6 +523,40 @@ const DECODERS: readonly DecoderSpec[] = [
       {
         label: "empty metadataHash",
         doc: put(GOOD_NODE, "", "hashes", "metadataHash"),
+      },
+    ],
+  },
+  {
+    name: "query node (own/subtree text summary)",
+    decode: decodeNodeTextSummary,
+    good: GOOD_NODE,
+    verify: (decoded: ReturnType<typeof decodeNodeTextSummary>) => {
+      expect(decoded.ownText).toBe("Login must work.\n");
+      expect(decoded.subtreeText).toBe("Login must work.\n\nDetails.\n");
+    },
+    alsoGood: [
+      {
+        // The point of this summary decoder: a document carrying only the
+        // CONF-MD-scoped query surface — own and subtree text, nothing else
+        // — decodes (CERTIFICATIONS.md §CONF-MD; P-2, P-3), and empty texts
+        // are legitimate values (an empty leaf section, SPEC.md 1.1), never
+        // rejected and never defaulted.
+        label: "a document carrying only the scoped text fields (both empty)",
+        doc: { ownText: "", subtreeText: "" },
+        verify: (decoded: ReturnType<typeof decodeNodeTextSummary>): void => {
+          expect(decoded.ownText).toBe("");
+          expect(decoded.subtreeText).toBe("");
+        },
+      },
+    ],
+    bad: [
+      { label: "missing ownText", doc: omit(GOOD_NODE, "ownText") },
+      { label: "non-string ownText", doc: put(GOOD_NODE, 7, "ownText") },
+      { label: "null ownText", doc: put(GOOD_NODE, null, "ownText") },
+      { label: "missing subtreeText", doc: omit(GOOD_NODE, "subtreeText") },
+      {
+        label: "non-string subtreeText",
+        doc: put(GOOD_NODE, ["x"], "subtreeText"),
       },
     ],
   },

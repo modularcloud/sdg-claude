@@ -131,6 +131,18 @@ export interface NodeMetadataSummary {
   readonly metadataHash: string;
 }
 
+/**
+ * Own/subtree text summary of a `query node` document — the CONF-MD-scoped
+ * query surface (CERTIFICATIONS.md §CONF-MD: fixtures within that scope
+ * promise `query node` reporting own and subtree text, SPEC.md 1.6), for the
+ * text-algebra property (P-2/P-3). Either text MAY be empty (an empty leaf
+ * section, SPEC.md 1.1).
+ */
+export interface NodeTextSummary {
+  readonly ownText: string;
+  readonly subtreeText: string;
+}
+
 /** `query reachable` (T11-5): existence plus one shortest witness path. */
 export interface ReachableReport {
   readonly reachable: boolean;
