@@ -21,7 +21,6 @@ Planned 2026-07-10 from the Phase 9 iteration-1 compliance panel (TEST-SPEC.md a
 
 Each task implements exactly the named TEST-SPEC.md tests, to their full text (arms included). Default verification per Conventions.
 
-- [ ] **SUITE-43 — §12.1–12.2:** T12.1-1…T12.1-4, T12.2-1…T12.2-3 (build products; no-policy; regeneration and orphan removal; failed build modifies nothing; check green path; per-family finding scope; check never refreshes).
 - [ ] **SUITE-44 — §12.3–12.5:** T12.3-1, T12.3-2, T12.4-1, T12.5-1 (ids ordering/`--tree`/restricted-tree/`--file`; `--unreferenced` vs uncovered; show's full enumeration adapter-compared to `query node`; dispatch and unknown-command exit 2).
 - [ ] **SUITE-45 — §13.1–13.2:** T13.1-1, T13.1-2, T13.2-1 (generated layout and orphan recording; standalone consumer project under standard tooling only — the section-4 umbrella E2E, needs HARNESS-05; Markdown emission placement incl. `outDir`).
 - [ ] **SUITE-46 — §13.3:** T13.3-1…T13.3-4 (serving reads; refresh semantics with the T13.3-2 operational deletion definition; failed refresh — every read and mutating `review` subcommand reports validation errors, exit 1, modifies nothing; graph-data byte determinism).
