@@ -21,7 +21,6 @@ Planned 2026-07-10 from the Phase 9 iteration-1 compliance panel (TEST-SPEC.md a
 
 Each task implements exactly the named TEST-SPEC.md tests, to their full text. Default verification per Conventions.
 
-- [ ] **PROP-07 — P-9 review invariants.** Random valid review-operation sequences interleaved with edits: ≤1 item per kind+scope; `blockedBy` acyclic; retired ids never reused; `next` contract; reads never change bytes; sessions re-read non-corrupt. Cites §16 P-9.
 - [ ] **PROP-08 — P-10 concurrency.** Randomized schedules of concurrent readers plus one mutating command (via `--test-hold` and kills): readers observe only prior-or-complete states; post-hoc journal-line and session-status accounting loses nothing. Cites §16 P-10. Uses HARNESS-02 choreography.
 
 ## D. Certification fixtures and the certification run (`test/fixtures/` + `test/self/`)
