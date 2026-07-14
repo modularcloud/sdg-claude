@@ -122,6 +122,28 @@ export interface ExpectedNodeImpact {
 }
 
 /**
+ * Assert an impact report's full content for a fixture without code groups:
+ * the requirement-level expectation table of
+ * {@link assertRequirementCategories} plus empty directly/transitively
+ * impacted code — no code group is configured, so no code location can be
+ * impacted (SPEC 9.2). Fixtures whose impacted-code groups are non-empty
+ * (T15-1) call {@link assertRequirementCategories} directly and assert the
+ * code groups separately.
+ */
+export function assertImpactCategories(
+  report: ImpactReport,
+  expectations: readonly ExpectedNodeImpact[],
+  context: string,
+): void {
+  assertRequirementCategories(report, expectations, context);
+  assertSameJson(
+    report.code,
+    { direct: [], transitive: [] },
+    `${context}: no code groups are configured, so no code location is impacted (SPEC 9.2)`,
+  );
+}
+
+/**
  * Assert an impact report's requirement-level content against the complete
  * per-node expectation table of a fixture (SPEC 5.6, 9.1):
  *
@@ -132,10 +154,12 @@ export interface ExpectedNodeImpact {
  *   uncategorized node appears under none);
  * - every entry naming a node must agree with its expected deleted flag;
  * - the categories merged across entries naming the node must equal the
- *   expected set exactly, each attribution checked per its expectation;
- * - no code location is impacted (these fixtures configure no code groups).
+ *   expected set exactly, each attribution checked per its expectation.
+ *
+ * The impacted-code groups are not touched: fixtures without code groups use
+ * {@link assertImpactCategories}, which adds the empty-code assertion.
  */
-export function assertImpactCategories(
+export function assertRequirementCategories(
   report: ImpactReport,
   expectations: readonly ExpectedNodeImpact[],
   context: string,
@@ -256,12 +280,6 @@ export function assertImpactCategories(
       }
     }
   }
-
-  assertSameJson(
-    report.code,
-    { direct: [], transitive: [] },
-    `${context}: no code groups are configured, so no code location is impacted (SPEC 9.2)`,
-  );
 }
 
 // ---------------------------------------------------------------------------

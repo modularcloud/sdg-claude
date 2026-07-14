@@ -17,13 +17,9 @@ Planned 2026-07-10 from the Phase 9 iteration-1 compliance panel (TEST-SPEC.md a
 
 ---
 
-## B. Product-facing suite (`test/suite/`) — expected red against the stub
-
-Each task implements exactly the named TEST-SPEC.md tests, to their full text (arms included). Default verification per Conventions.
-
-- [ ] **SUITE-50 — §15:** T15-1 (SPEC.md §15's exact workspace: six edges, transitive coverage path, edit categories, four path-blocks items, rename + no-change impact — one integration test).
-
 ## C. Property-based and fuzz tests (`test/suite/`) — expected red against the stub
+
+Each task implements exactly the named TEST-SPEC.md tests, to their full text. Default verification per Conventions.
 
 - [ ] **PROP-01 — P-1 segment/tag validity.** Generator weighted toward 1.4 boundaries (whitespace/control classes, U+00A0/U+0085/U+2028, `.`/`#`, forbidden names, glob metacharacters as ordinary valid characters); accepted-iff-valid for segments; tags via the 2.6 splitting model (tokens each valid; zero tokens = omitted). Cites §16 P-1, H-10. CONF-VALID in-scope. Needs HARNESS-10.
 - [ ] **PROP-02 — P-2 + P-3 Markdown/text algebra.** Random documents (prose, nested sections, imports, single/multi-line comments, embeddings, mixed terminators, boundary-code-point-weighted content) compiled output equals the HARNESS-08 oracle; determinism; byte preservation outside removals. P-3: root subtree text = compiled output; run interleaving; N+1 runs. Cites §16 P-2/P-3. CONF-MD in-scope.
