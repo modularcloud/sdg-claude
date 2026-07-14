@@ -21,7 +21,6 @@ Planned 2026-07-10 from the Phase 9 iteration-1 compliance panel (TEST-SPEC.md a
 
 Each task implements exactly the named TEST-SPEC.md tests, to their full text (arms included). Default verification per Conventions.
 
-- [ ] **SUITE-49 — §14:** T14-1…T14-5 (multi-error completeness with file/location/correction info; unresolved references 14.5/14.6/14.7; masking incl. configuration-error suppression; reporter matrix build vs check vs review; grammar selection `.tsx`/`.ts`/`.mts`).
 - [ ] **SUITE-50 — §15:** T15-1 (SPEC.md §15's exact workspace: six edges, transitive coverage path, edit categories, four path-blocks items, rename + no-change impact — one integration test).
 
 ## C. Property-based and fuzz tests (`test/suite/`) — expected red against the stub
