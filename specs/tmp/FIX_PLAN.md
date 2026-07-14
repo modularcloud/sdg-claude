@@ -21,7 +21,6 @@ Planned 2026-07-10 from the Phase 9 iteration-1 compliance panel (TEST-SPEC.md a
 
 Each task implements exactly the named TEST-SPEC.md tests, to their full text. Default verification per Conventions.
 
-- [ ] **PROP-04 — P-5 + P-6 purity and replay.** Random journaled rename/file-move sequences: hashes byte-stable, impact empty against every prior commit, references resolve; random section moves: only predicted parents categorized. P-6: random edit/rename/move/commit interleavings — impact categories against each historical baseline equal an oracle graph diff mapped through the journal suffix. Cites §16 P-5/P-6.
 - [ ] **PROP-05 — P-7 glob/capture property.** Random patterns/paths over the §7/§7.5 grammar (generators include foreign-dialect metacharacters); product match decisions and capture values equal the HARNESS-09 oracle; uniqueness under shortest-match; captures never span `/` or match empty. Cites §16 P-7.
 - [ ] **PROP-06 — P-8 parser robustness.** Fuzzed bytes (mutated MDX/TS/config, invalid UTF-8, BOMs, giant nesting, pathological terminators): every command terminates, never emits partial JSON under `--json`, exits only 0/1/2, and failing `build`s modify nothing. Cites §16 P-8.
 - [ ] **PROP-07 — P-9 review invariants.** Random valid review-operation sequences interleaved with edits: ≤1 item per kind+scope; `blockedBy` acyclic; retired ids never reused; `next` contract; reads never change bytes; sessions re-read non-corrupt. Cites §16 P-9.

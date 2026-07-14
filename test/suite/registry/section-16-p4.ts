@@ -1018,7 +1018,7 @@ function embedSitesOf(nodes: readonly NodeLoc[]): {
 
 // --- per-class edit generation ------------------------------------------------
 
-type EditClass =
+export type EditClass =
   | "content"
   | "referencedText"
   | "structure"
@@ -1041,7 +1041,12 @@ function genEditProse(choices: Choices, sites: readonly ProseSite[]): Edit {
   return { kind: "editProse", ...site, text: proseText(choices) };
 }
 
-function genEditOfClass(
+/**
+ * One random edit of the given class against the given model (exported for
+ * the P-6 interleaving generator, which draws edits one at a time against an
+ * evolving model — section-16-p5-p6.ts).
+ */
+export function genEditOfClass(
   choices: Choices,
   model: WorkspaceModel,
   editClass: EditClass,
