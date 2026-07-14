@@ -78,6 +78,33 @@ export interface ProductBinding {
   readonly requiredFiles?: readonly string[];
 }
 
+/**
+ * A run killed by the hang guard: the child did not terminate within its
+ * timeout (H-8: hangs are failures, never skips or harness hangs). Typed so a
+ * test whose *assertion* is termination (P-8 "every command terminates") can
+ * convert exactly this outcome into a diagnosed assertion failure while every
+ * other rejection stays a harness error.
+ */
+export class ProductRunTimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ProductRunTimeoutError";
+  }
+}
+
+/**
+ * A run killed by the runaway-output guard (H-8): combined stdout+stderr
+ * exceeded the invocation's byte cap. Typed for the same reason as
+ * {@link ProductRunTimeoutError}: unbounded output is non-termination within
+ * budget for a robustness property.
+ */
+export class ProductRunOutputOverflowError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ProductRunOutputOverflowError";
+  }
+}
+
 const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 
 /**
@@ -266,7 +293,7 @@ export class RunningProduct {
         settle(() => {
           if (timedOut) {
             reject(
-              new Error(
+              new ProductRunTimeoutError(
                 `${commandLine} timed out after ${timeoutMs} ms and was killed (H-8: hangs are failures, never skips). Partial stdout: ${excerpt(Buffer.concat(stdoutChunks))}; partial stderr: ${excerpt(Buffer.concat(stderrChunks))}`,
               ),
             );
@@ -274,7 +301,7 @@ export class RunningProduct {
           }
           if (overflowed) {
             reject(
-              new Error(
+              new ProductRunOutputOverflowError(
                 `${commandLine} exceeded the output limit of ${maxOutputBytes} bytes and was killed (H-8: runaway output is a failure, not a harness hang).`,
               ),
             );
