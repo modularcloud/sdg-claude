@@ -13,6 +13,6 @@ Build, test, and run instructions for this repository (nothing else belongs in t
 - Harness self-tests and certification only (TEST-SPEC 17): `npm run test:self`.
 - Windows-leg subset (TEST-SPEC E-6; run by the Windows CI job): `npm run test:windows`.
 - Local-only suite (TEST-SPEC E-2; separately invocable, never run in CI, currently empty): `npm run test:local`.
-- Property tests (TEST-SPEC 16; machinery in `test/helpers/property.ts`) run a fixed seed set by default — the CI mode, fully deterministic. To rerun with a specific seed: `XSPEC_PROPERTY_SEED=<uint32 from the failure message>`. Optional randomized local mode: `XSPEC_PROPERTY_SEED=random` (each property reports its seed for replay). Never set the variable in CI.
+- Property tests (TEST-SPEC 16; machinery in `test/helpers/property.ts`) run a fixed seed set by default — the CI mode, fully deterministic. To rerun with a specific seed: `XSPEC_PROPERTY_SEED=<uint32 from the failure message>`. Optional randomized local mode: `XSPEC_PROPERTY_SEED=random` (each property reports its seed for replay). Never set the variable in CI. Vitest intercepts the seed reports (`console.info`); add `--disable-console-intercept` to the vitest invocation to see them.
 - Format code (Prettier, default config, `src/` and `test/` only): `npm run format`; verify: `npm run format:check`.
 - CI: `.github/workflows/ci.yml` — harness-self (Linux), full suite (Linux, network disabled after setup via `.github/scripts/run-without-network.sh`), and the Windows E-6 leg on every pull request.
