@@ -1745,7 +1745,15 @@ const MUTATING_FLAGS = { ...READ_FLAGS, "--test-hold": "value" };
  */
 async function runMutating(cwd, configFlag, holdFlag, operate) {
   const config = await loadConfig(cwd, configFlag);
-  const lock = await acquireExclusivity(config.root);
+  // VIOL-CORE-NOLOCK (CERTIFICATIONS.md): mutating commands do not exclude
+  // one another — exclusivity is neither acquired nor checked, so a second
+  // mutating command started while another runs or is held proceeds normally
+  // instead of failing with the usage error of 13.5/12.0. Everything else,
+  // the hold file created below before any modification and honored
+  // included, is exactly the conformer's behavior.
+  const lock = deviations.noMutualExclusion
+    ? { release: async () => {} }
+    : await acquireExclusivity(config.root);
   try {
     if (holdFlag !== undefined) {
       try {
@@ -2771,12 +2779,25 @@ async function commandReview(io, cwd, argv) {
 // ---------------------------------------------------------------------------
 
 /**
+ * Deviation switches active for this invocation (CERTIFICATIONS.md
+ * VIOL-CORE-* violators). Set once per invocation by runXspec from its
+ * `options` argument; with no switch set, every code path behaves as the
+ * conformer. Module state is safe here: each bin*.mjs entry runs exactly one
+ * invocation per process.
+ *
+ * - `noMutualExclusion` (VIOL-CORE-NOLOCK): mutating commands do not exclude
+ *   one another; see runMutating.
+ */
+let deviations = {};
+
+/**
  * Run one xspec invocation. Returns the exit code (SPEC 12.0 partition).
- * `io` writes the streams; `options` is the seam through which violator
- * fixtures (CERTIFICATIONS.md) will thread their single deviations.
+ * `io` writes the streams; `options` is the seam through which each violator
+ * fixture's bin-<name>.mjs entry threads exactly one deviation switch (the
+ * conformer's bin.mjs passes none).
  */
 export async function runXspec(argv, cwd, options = {}) {
-  void options; // deviation seam for the VIOL-CORE-* fixtures (later tasks)
+  deviations = options;
   const io = {
     stdout: (text) => process.stdout.write(text),
     stderr: (text) => process.stderr.write(text),

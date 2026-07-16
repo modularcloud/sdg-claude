@@ -7,8 +7,8 @@
 // (plain Node ESM programs).
 //
 // Each conformer entry carries its CERTIFICATIONS.md in-scope test IDs
-// verbatim; each violator (added by its own CERT task) will carry the IDs it
-// certifies — the tests that must fail against it while every other
+// verbatim; each violator entry (added by its own CERT task) carries the IDs
+// it certifies — the tests that must fail against it while every other
 // in-scope test passes. The C-1 gate over the whole document is CERT-18's
 // certification self-test; per-fixture verification lives in
 // certification.test.ts.
@@ -52,3 +52,20 @@ export const CONF_CORE_IN_SCOPE: readonly string[] = [
   "T13.5-4",
   "T13.5-5",
 ];
+
+/**
+ * VIOL-CORE-NOLOCK (CERTIFICATIONS.md §VIOL-CORE-NOLOCK): the CONF-CORE
+ * conformer, except mutating commands do not exclude one another — the hold
+ * file is still created before any modification and honored, but a second
+ * mutating command started while another runs or is held proceeds normally
+ * instead of failing with the usage error of SPEC 13.5/12.0.
+ */
+export function violCoreNolockBinding(): ProductBinding {
+  return nodeFixtureBinding(
+    "VIOL-CORE-NOLOCK violator",
+    "conf-core/bin-nolock.mjs",
+  );
+}
+
+/** The tests §VIOL-CORE-NOLOCK certifies, verbatim from CERTIFICATIONS.md. */
+export const VIOL_CORE_NOLOCK_CERTIFIES: readonly string[] = ["T13.5-2"];
