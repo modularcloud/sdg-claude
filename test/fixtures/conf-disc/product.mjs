@@ -169,8 +169,8 @@ async function pathOccupied(absPath) {
 // ---------------------------------------------------------------------------
 // Deviation switches (CERTIFICATIONS.md §VIOL-DISC-*), all off in the
 // conformer; assigned by runXspec from each entry's options. See the module
-// header for the hook point each named switch is consumed at when its CERT
-// task lands: `dialectMetachars` (§VIOL-DISC-DIALECT → parseSegment),
+// header for the hook point each named switch is consumed at:
+// `dialectMetachars` (§VIOL-DISC-DIALECT → parseSegment),
 // `followFileSymlinks` (§VIOL-DISC-SYMLINK → walkPlainFiles),
 // `noDerivedExclusion` (§VIOL-DISC-DERIVED → discoverSources).
 // ---------------------------------------------------------------------------
@@ -515,6 +515,17 @@ const STAR = 0x2a; // "*"
 const QUESTION = 0x3f; // "?"
 const DOT = 0x2e; // "."
 
+// Bytes with meaning only under §VIOL-DISC-DIALECT's dialect (CERT-15); to
+// the conformer every one of them is an ordinary literal (SPEC 7).
+const LBRACKET = 0x5b; // "["
+const RBRACKET = 0x5d; // "]"
+const LBRACE = 0x7b; // "{"
+const RBRACE = 0x7d; // "}"
+const COMMA = 0x2c; // ","
+const BANG = 0x21; // "!"
+const CARET = 0x5e; // "^"
+const DASH = 0x2d; // "-"
+
 /** Split UTF-8 bytes on `/` (0x2F). UTF-8 never embeds 0x2F inside a
  * multi-byte sequence, so byte-level splitting is exact. */
 function splitOnSlash(bytes) {
@@ -544,6 +555,19 @@ function splitOnSlash(bytes) {
 function parseSegment(segment) {
   if (segment.length === 2 && segment[0] === STAR && segment[1] === STAR) {
     return { kind: "globstar" };
+  }
+  if (deviations.dialectMetachars) {
+    // §VIOL-DISC-DIALECT (CERT-15): the common dialect first expands `{ }`
+    // brace alternations (segment-local, as candidate segment spellings) and
+    // then tokenizes each variant with `[ ]` bracket expressions active; the
+    // segment matches when any variant does. `*`, `?`, `**` (handled above),
+    // case sensitivity (byte-wise matching), and the dot-segment rule (read
+    // from the pattern segment as written, below) stay unchanged.
+    return {
+      kind: "dialect-alternatives",
+      variants: expandBraceAlternations(segment).map(tokenizeDialectVariant),
+      writtenLeadingDot: segment.length > 0 && segment[0] === DOT,
+    };
   }
   const tokens = [];
   let literalStart = -1;
@@ -576,6 +600,146 @@ function parseSegment(segment) {
     writtenLeadingDot: segment.length > 0 && segment[0] === DOT,
   };
 }
+
+// --- §VIOL-DISC-DIALECT machinery (CERT-15) ---------------------------------
+// Used only from parseSegment's `dialectMetachars` branch: the common
+// dialect's brace alternation (bash-style textual expansion, segment-local)
+// and bracket expressions (member sets with `-` ranges and leading `!`/`^`
+// negation, matching exactly one byte). All dead code in the conformer.
+
+/**
+ * Expand a segment's `{ }` brace alternations into the candidate segment
+ * spellings of the common dialect: the first `{` with a matching `}` and at
+ * least one top-level comma splits into its alternatives (an alternation-free
+ * `{a}` stays literal, as in the dialect), each spliced between prefix and
+ * suffix and expanded recursively — so nested and successive braces expand
+ * fully. A segment without an active brace expands to itself alone.
+ */
+function expandBraceAlternations(segment) {
+  for (let i = 0; i < segment.length; i += 1) {
+    if (segment[i] !== LBRACE) continue;
+    let depth = 0;
+    let close = -1;
+    const commas = [];
+    for (let j = i; j < segment.length; j += 1) {
+      const byte = segment[j];
+      if (byte === LBRACE) {
+        depth += 1;
+      } else if (byte === RBRACE) {
+        depth -= 1;
+        if (depth === 0) {
+          close = j;
+          break;
+        }
+      } else if (byte === COMMA && depth === 1) {
+        commas.push(j);
+      }
+    }
+    if (close === -1 || commas.length === 0) continue;
+    const bounds = [i, ...commas, close];
+    const expanded = [];
+    for (let k = 0; k + 1 < bounds.length; k += 1) {
+      const candidate = Buffer.concat([
+        segment.subarray(0, i),
+        segment.subarray(bounds[k] + 1, bounds[k + 1]),
+        segment.subarray(close + 1),
+      ]);
+      expanded.push(...expandBraceAlternations(candidate));
+    }
+    return expanded;
+  }
+  return [segment];
+}
+
+/**
+ * Parse the dialect's bracket expression opening at `segment[open]` (a `[`):
+ * an optional leading `!`/`^` negation, then member bytes and `x-y` byte
+ * ranges up to the closing `]` — a `]` in first member position is a member,
+ * per the dialect. Returns the member set, negation, and the index of the
+ * closing `]`, or undefined when no `]` closes the expression (the `[` then
+ * stays a literal, as in the dialect).
+ */
+function parseBracketExpression(segment, open) {
+  let i = open + 1;
+  let negated = false;
+  if (i < segment.length && (segment[i] === BANG || segment[i] === CARET)) {
+    negated = true;
+    i += 1;
+  }
+  const members = new Set();
+  let close = -1;
+  for (let first = true; i < segment.length; first = false) {
+    const byte = segment[i];
+    if (byte === RBRACKET && !first) {
+      close = i;
+      break;
+    }
+    if (
+      i + 2 < segment.length &&
+      segment[i + 1] === DASH &&
+      segment[i + 2] !== RBRACKET
+    ) {
+      for (let member = byte; member <= segment[i + 2]; member += 1) {
+        members.add(member);
+      }
+      i += 3;
+    } else {
+      members.add(byte);
+      i += 1;
+    }
+  }
+  if (close === -1) return undefined;
+  return { members, negated, end: close };
+}
+
+/**
+ * Tokenize one brace-expanded dialect variant: the conformer's tokenization
+ * (`*` byte runs, `?` single bytes, literals) with `[ ]` bracket expressions
+ * additionally active as one-byte classes. Everything else — `!` outside
+ * brackets, extglob-looking `+(x)`, an unclosed `[` — stays literal.
+ */
+function tokenizeDialectVariant(segment) {
+  const tokens = [];
+  let literalStart = -1;
+  const endLiteral = (end) => {
+    if (literalStart !== -1) {
+      tokens.push({
+        kind: "literal",
+        bytes: segment.subarray(literalStart, end),
+      });
+      literalStart = -1;
+    }
+  };
+  for (let i = 0; i < segment.length; i += 1) {
+    const byte = segment[i];
+    if (byte === STAR) {
+      endLiteral(i);
+      tokens.push({ kind: "byte-run" });
+    } else if (byte === QUESTION) {
+      endLiteral(i);
+      tokens.push({ kind: "one-byte" });
+    } else if (byte === LBRACKET) {
+      const bracket = parseBracketExpression(segment, i);
+      if (bracket === undefined) {
+        if (literalStart === -1) literalStart = i;
+      } else {
+        endLiteral(i);
+        tokens.push({
+          kind: "byte-class",
+          members: bracket.members,
+          negated: bracket.negated,
+        });
+        i = bracket.end;
+      }
+    } else if (literalStart === -1) {
+      literalStart = i;
+    }
+  }
+  endLiteral(segment.length);
+  return tokens;
+}
+
+// --- end §VIOL-DISC-DIALECT machinery ----------------------------------------
 
 /** Parsed patterns, memoized per pattern string (patterns repeat per file).
  * Safe across deviation switches: each process runs exactly one invocation
@@ -620,6 +784,13 @@ function matchTokenSegment(tokens, bytes) {
         matchAt(ti + 1, at + token.bytes.length);
     } else if (token.kind === "one-byte") {
       matched = at < bytes.length && matchAt(ti + 1, at + 1);
+    } else if (token.kind === "byte-class") {
+      // §VIOL-DISC-DIALECT only (CERT-15): a dialect bracket expression —
+      // exactly one byte drawn from (negated: outside) the member set.
+      matched =
+        at < bytes.length &&
+        token.members.has(bytes[at]) !== token.negated &&
+        matchAt(ti + 1, at + 1);
     } else {
       // `*`: a possibly empty byte run within this segment.
       matched = false;
@@ -634,6 +805,20 @@ function matchTokenSegment(tokens, bytes) {
     return matched;
   };
   return matchAt(0, 0);
+}
+
+/**
+ * Match one parsed non-`**` pattern segment against one path segment's
+ * bytes: the conformer's single token list or — under §VIOL-DISC-DIALECT
+ * only — any of the dialect segment's brace-expanded variants.
+ */
+function segmentTokensMatch(segment, pathSegment) {
+  if (segment.kind === "dialect-alternatives") {
+    return segment.variants.some((tokens) =>
+      matchTokenSegment(tokens, pathSegment),
+    );
+  }
+  return matchTokenSegment(segment.tokens, pathSegment);
 }
 
 /**
@@ -675,7 +860,7 @@ function matchSegments(patternSegments, pathSegments) {
         !segment.writtenLeadingDot;
       matched =
         !dotBlocked &&
-        matchTokenSegment(segment.tokens, pathSegment) &&
+        segmentTokensMatch(segment, pathSegment) &&
         matchFrom(pi + 1, si + 1);
     }
     if (!matched) failed.add(key);

@@ -40,6 +40,8 @@ import {
   violCorePersistreadsBinding,
   VIOL_CORE_STALELOCK_CERTIFIES,
   violCoreStalelockBinding,
+  VIOL_DISC_DIALECT_CERTIFIES,
+  violDiscDialectBinding,
   VIOL_MD_CLASS_CERTIFIES,
   violMdClassBinding,
   VIOL_MD_CR_CERTIFIES,
@@ -286,5 +288,17 @@ test(
   { timeout: RUN_TIMEOUT_MS },
   async () => {
     await verifyConformerAllPass(confDiscBinding(), CONF_DISC_IN_SCOPE);
+  },
+);
+
+test(
+  "VIOL-DISC-DIALECT violator: exactly T7-4 fails, every other §CONF-DISC in-scope test passes (C-1)",
+  { timeout: RUN_TIMEOUT_MS },
+  async () => {
+    await verifyViolatorExpectedFailures(
+      violDiscDialectBinding(),
+      CONF_DISC_IN_SCOPE,
+      VIOL_DISC_DIALECT_CERTIFIES,
+    );
   },
 );

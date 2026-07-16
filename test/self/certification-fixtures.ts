@@ -312,3 +312,22 @@ export function confDiscBinding(): ProductBinding {
 
 /** §CONF-DISC's in-scope tests, verbatim from CERTIFICATIONS.md. */
 export const CONF_DISC_IN_SCOPE: readonly string[] = ["T7-4", "T7-5", "T7-6"];
+
+/**
+ * VIOL-DISC-DIALECT (CERTIFICATIONS.md §VIOL-DISC-DIALECT): the CONF-DISC
+ * conformer, except glob patterns are interpreted in a common dialect in
+ * which `[ ]` bracket expressions and `{ }` brace alternations are active
+ * metacharacters, instead of the literals SPEC 7 requires — a single
+ * deviation: one rule of 7 (every character outside `*`, `?`, and `**` is a
+ * literal) broken for one dialect's metacharacter subset. `*`, `?`, `**`,
+ * case sensitivity, and the dot-segment rule are unchanged.
+ */
+export function violDiscDialectBinding(): ProductBinding {
+  return nodeFixtureBinding(
+    "VIOL-DISC-DIALECT violator",
+    "conf-disc/bin-dialect.mjs",
+  );
+}
+
+/** The tests §VIOL-DISC-DIALECT certifies, verbatim from CERTIFICATIONS.md. */
+export const VIOL_DISC_DIALECT_CERTIFIES: readonly string[] = ["T7-4"];
