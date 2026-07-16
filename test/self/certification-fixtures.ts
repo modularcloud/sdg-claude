@@ -202,3 +202,25 @@ export const CONF_VALID_IN_SCOPE: readonly string[] = [
   "T2.6-2",
   "P-1",
 ];
+
+/**
+ * VIOL-VALID-CTRL (CERTIFICATIONS.md §VIOL-VALID-CTRL): the CONF-VALID
+ * conformer, except the control-character rule of SPEC 1.4 is not enforced
+ * for code points outside the whitespace class — segments and tags containing
+ * U+0000–U+0008, U+000E–U+001F, or U+007F are accepted as valid. Whitespace
+ * characters (U+0009–U+000D, U+0020) remain rejected in segments, and tag
+ * splitting is unchanged.
+ */
+export function violValidCtrlBinding(): ProductBinding {
+  return nodeFixtureBinding(
+    "VIOL-VALID-CTRL violator",
+    "conf-valid/bin-ctrl.mjs",
+  );
+}
+
+/** The tests §VIOL-VALID-CTRL certifies, verbatim from CERTIFICATIONS.md. */
+export const VIOL_VALID_CTRL_CERTIFIES: readonly string[] = [
+  "T1.4-1",
+  "T1.4-4",
+  "P-1",
+];

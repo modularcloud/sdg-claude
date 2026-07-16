@@ -50,11 +50,14 @@
 // in any output; all JSON is serialized with byte-sorted keys.
 //
 // Deviation seam: runXspec(argv, cwd, options) assigns `options` onto the
-// module-level `deviations` switches (all off = this conformer). The
-// VIOL-VALID-* violator entries (CERT-09, CERT-10) each add a bin-<name>.mjs
-// passing exactly one switch, consumed in the 1.4 validity classification
-// below — tag *splitting* (SPEC 2.6) stays on the exact 1.4 whitespace class
-// for every fixture (§VIOL-VALID-WIDE deviates validity, not splitting).
+// module-level `deviations` switches (all off = this conformer). Each
+// VIOL-VALID-* violator entry is a bin-<name>.mjs passing exactly one switch,
+// consumed in the 1.4 validity classification below — tag *splitting*
+// (SPEC 2.6) stays on the exact 1.4 whitespace class for every fixture
+// (§VIOL-VALID-WIDE deviates validity, not splitting). Landed switches:
+// `acceptNonWhitespaceControls` (§VIOL-VALID-CTRL, bin-ctrl.mjs, CERT-09) in
+// `valueViolation`'s control branch; CERT-10 (WIDE) adds its switch at
+// `isValidityWhitespace` enforcement when it lands.
 
 import { createHash } from "node:crypto";
 import * as fsp from "node:fs/promises";
@@ -534,7 +537,15 @@ function valueViolation(value, role) {
     if (isValidityWhitespace(codePoint)) {
       return `the ${role} contains the whitespace character ${codePointName(codePoint)} (SPEC 1.4)`;
     }
-    if (isValidityControl(codePoint)) {
+    // §VIOL-VALID-CTRL (bin-ctrl.mjs): under `acceptNonWhitespaceControls`
+    // the control rule is not enforced for code points outside the whitespace
+    // class. The whitespace branch above runs first, so exactly U+0000–U+0008,
+    // U+000E–U+001F, and U+007F are accepted; whitespace characters remain
+    // rejected in segments, and `splitTags` below is untouched.
+    if (
+      isValidityControl(codePoint) &&
+      !deviations.acceptNonWhitespaceControls
+    ) {
       return `the ${role} contains the control character ${codePointName(codePoint)} (SPEC 1.4)`;
     }
   }
@@ -1121,8 +1132,11 @@ async function commandQuery(io, cwd, argv) {
 /**
  * Deviation switches (CERTIFICATIONS.md §VIOL-VALID-*), all off in the
  * conformer. Each violator's bin-<name>.mjs threads exactly one switch
- * through runXspec's `options`; the violator CERT tasks (CERT-09 CTRL,
- * CERT-10 WIDE) add their switches and consumption when they land.
+ * through runXspec's `options`:
+ *   - `acceptNonWhitespaceControls` (§VIOL-VALID-CTRL, bin-ctrl.mjs):
+ *     consumed in `valueViolation` — non-whitespace control characters are
+ *     accepted in segments and tags.
+ * CERT-10 (WIDE) adds its switch and consumption when it lands.
  */
 let deviations = {};
 
@@ -1134,7 +1148,6 @@ let deviations = {};
  */
 export async function runXspec(argv, cwd, options = {}) {
   deviations = options;
-  void deviations; // consumed by the VIOL-VALID-* switches when they land
   const io = {
     stdout: (text) => process.stdout.write(text),
     stderr: (text) => process.stderr.write(text),
