@@ -40,6 +40,8 @@ import {
   violCoreStalelockBinding,
   VIOL_MD_CLASS_CERTIFIES,
   violMdClassBinding,
+  VIOL_MD_CR_CERTIFIES,
+  violMdCrBinding,
   VIOL_VALID_CTRL_CERTIFIES,
   violValidCtrlBinding,
   VIOL_VALID_WIDE_CERTIFIES,
@@ -261,6 +263,18 @@ test(
       violMdClassBinding(),
       CONF_MD_IN_SCOPE,
       VIOL_MD_CLASS_CERTIFIES,
+    );
+  },
+);
+
+test(
+  "VIOL-MD-CR violator: exactly T3-4 and P-2 fail, every other §CONF-MD in-scope test passes (C-1)",
+  { timeout: RUN_TIMEOUT_MS },
+  async () => {
+    await verifyViolatorExpectedFailures(
+      violMdCrBinding(),
+      CONF_MD_IN_SCOPE,
+      VIOL_MD_CR_CERTIFIES,
     );
   },
 );

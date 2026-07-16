@@ -283,3 +283,17 @@ export function violMdClassBinding(): ProductBinding {
 
 /** The tests §VIOL-MD-CLASS certifies, verbatim from CERTIFICATIONS.md. */
 export const VIOL_MD_CLASS_CERTIFIES: readonly string[] = ["T3-3", "P-2"];
+
+/**
+ * VIOL-MD-CR (CERTIFICATIONS.md §VIOL-MD-CR): the CONF-MD conformer, except
+ * a lone U+000D is not recognized as a line terminator by the line model of
+ * SPEC 3 — consistently in Markdown output and, through SPEC 1.6, in own and
+ * subtree text. CRLF and lone U+000A remain terminators; a lone U+000D is an
+ * ordinary in-line character.
+ */
+export function violMdCrBinding(): ProductBinding {
+  return nodeFixtureBinding("VIOL-MD-CR violator", "conf-md/bin-cr.mjs");
+}
+
+/** The tests §VIOL-MD-CR certifies, verbatim from CERTIFICATIONS.md. */
+export const VIOL_MD_CR_CERTIFIES: readonly string[] = ["T3-4", "P-2"];

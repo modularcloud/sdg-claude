@@ -71,8 +71,10 @@
 //     classification, the only whitespace class the compile consults,
 //     feeding both "contained non-whitespace in the source" and "left empty
 //     or whitespace-only".
-//   - §VIOL-MD-CR (CERT-13): line-terminator recognition lives in
-//     `terminatorAt` — the only place the compile's line model ends a line.
+//   - §VIOL-MD-CR (CERT-13, bin-cr.mjs): `loneCrNotTerminator`, consumed in
+//     `terminatorAt` — the only place the compile's line model ends a line —
+//     so a lone U+000D is an ordinary in-line character while CRLF and lone
+//     U+000A remain terminators.
 // Both points feed the single attributed compile, so a deviation applied
 // there is consistent across output and text values by construction.
 
@@ -532,7 +534,9 @@ async function discoverSources(root, groups) {
  *   - `widenDropWhitespace` (§VIOL-MD-CLASS, bin-class.mjs, CERT-12):
  *     consumed in `isDropWhitespaceCode` — the line-drop rule classifies
  *     U+00A0, U+0085, and U+2028 as whitespace.
- *   - §VIOL-MD-CR (CERT-13) will consume its switch in `terminatorAt`.
+ *   - `loneCrNotTerminator` (§VIOL-MD-CR, bin-cr.mjs, CERT-13): consumed in
+ *     `terminatorAt` — a lone U+000D is not recognized as a line terminator;
+ *     CRLF and lone U+000A remain terminators.
  * Both points feed the single attributed compile, so any deviation there is
  * automatically consistent in Markdown output and, through SPEC 1.6, in own
  * and subtree text.
@@ -592,14 +596,26 @@ function isWhitespaceOnlyForDrop(text) {
  * (SPEC 3). Callers only invoke this at U+000A/U+000D positions; a U+000A at
  * `index` is never the tail of a CRLF here because content pieces are
  * contiguous source spans and a preceding U+000D in the same piece was
- * consumed as CRLF. This function is the compile's whole line model
- * (§VIOL-MD-CR's future hook, CERT-13).
+ * consumed as CRLF — true under the deviation too, which stops recognizing
+ * only the *lone* U+000D. This function is the compile's whole line model
+ * (§VIOL-MD-CR's hook, CERT-13).
+ *
+ * §VIOL-MD-CR (bin-cr.mjs): under `loneCrNotTerminator` a lone U+000D is not
+ * recognized as a line terminator — it stays an ordinary in-line character
+ * (still 1.4 whitespace to the drop rule's classification) — while CRLF and
+ * lone U+000A remain terminators. Line extents, and with them the drop
+ * rule's decisions and which terminator bytes drops consume, diverge; the
+ * one hook feeds the single attributed compile, so the deviation is
+ * consistent in Markdown output and, through SPEC 1.6, in own and subtree
+ * text (P-3's internal consistency is preserved, per §VIOL-MD-CR's
+ * expected-failure analysis).
  */
 function terminatorAt(text, index) {
   const code = text.charCodeAt(index);
   if (code === 0x000a) return "\n";
   if (code === 0x000d) {
-    return text.charCodeAt(index + 1) === 0x000a ? "\r\n" : "\r";
+    if (text.charCodeAt(index + 1) === 0x000a) return "\r\n";
+    return deviations.loneCrNotTerminator ? null : "\r";
   }
   return null;
 }
