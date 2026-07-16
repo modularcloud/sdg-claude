@@ -1388,7 +1388,18 @@ function sessionInvariantsHold(session, name) {
       return false;
     ids.add(item.id);
     if (!ITEM_KINDS.has(item.kind)) return false;
-    if (!STORED_STATUSES.has(item.status)) return false;
+    if (
+      !STORED_STATUSES.has(item.status) &&
+      // VIOL-CORE-PERSISTREADS (CERTIFICATIONS.md): the deviating product
+      // itself persists `invalidated` stored statuses, so its session model
+      // admits them on load — reporting its own written state corrupt
+      // (14.21) would be a second behavioral difference beyond the one
+      // deviation. With the deviation off, the conformer's stored-status
+      // set is unchanged.
+      !(deviations.persistReadInvalidation && item.status === "invalidated")
+    ) {
+      return false;
+    }
     if (typeof item.reason !== "string" || item.reason.length === 0)
       return false;
     if (typeof item.scopeRoot !== "string") return false;
@@ -1564,12 +1575,54 @@ function ancestorChain(node) {
   return chain;
 }
 
+/**
+ * VIOL-CORE-PERSISTREADS (CERTIFICATIONS.md): the collector for the items
+ * whose read-time invalidation the current review read computes — non-null
+ * exactly while a deviating `status`/`next`/`show`/`export` body runs (see
+ * withReadInvalidationPersistence), null everywhere else, so conformer
+ * paths and mutating commands never collect anything.
+ */
+let staleComputedDuringRead = null;
+
+/**
+ * VIOL-CORE-PERSISTREADS (CERTIFICATIONS.md): run one review read body
+ * (report emission included), collecting every resolved item whose recorded
+ * state the read computes as differing from the current graph (SPEC 10.4),
+ * then rewrite exactly those items' stored statuses to `invalidated` in the
+ * session file. The report is computed and emitted before anything is
+ * rewritten, so streams and exit code stay byte-identical to the
+ * conformer's — only the session file's bytes deviate. A read that computes
+ * no invalidation writes nothing (a session with no stale resolution stays
+ * byte-identical). With the deviation off, the body runs untouched.
+ */
+async function withReadInvalidationPersistence(root, session, body) {
+  if (!deviations.persistReadInvalidation) return await body();
+  const stale = new Set();
+  staleComputedDuringRead = stale;
+  let code;
+  try {
+    code = await body();
+  } finally {
+    staleComputedDuringRead = null;
+  }
+  if (stale.size > 0) {
+    for (const item of stale) item.status = "invalidated";
+    await writeSession(root, session);
+  }
+  return code;
+}
+
 /** Effective status on read: stored status with invalidation applied. */
 function effectiveStatus(item, graph, journalEntries) {
   if (
     RESOLVE_STATUSES.has(item.status) &&
     isStale(item, graph, journalEntries)
   ) {
+    // VIOL-CORE-PERSISTREADS (CERTIFICATIONS.md): this is the one place the
+    // fixture computes that a resolved item's recorded state differs from
+    // the current graph (isStale has no other caller), so a deviating read
+    // collects exactly the items whose invalidation it computed.
+    staleComputedDuringRead?.add(item);
     return "invalidated";
   }
   return item.status;
@@ -2739,37 +2792,39 @@ async function reviewStatus(io, cwd, argv) {
   const graph = await loadGraph(config.root, config.groups);
   const session = await requireSession(config.root, positionals[0]);
   const journal = await readJournal(config.root);
-  const totals = {
-    invalidated: 0,
-    "no-change": 0,
-    skipped: 0,
-    unresolved: 0,
-    updated: 0,
-  };
-  const rows = orderedItems(session, graph, journal.entries).map(
-    ({ item, mappedScope }) => {
-      const status = effectiveStatus(item, graph, journal.entries);
-      totals[status] += 1;
-      return {
-        blocked: isBlocked(item, session, graph, journal.entries),
-        id: item.id,
-        kind: item.kind,
-        scope: mappedScope,
-        status,
-      };
-    },
-  );
-  const doc = { items: rows, totals };
-  emitDoc(
-    io,
-    flags["--json"] === true,
-    doc,
-    rows.map(
-      (row) =>
-        `${row.id} ${row.kind} ${row.scope} ${row.status}${row.blocked ? " (blocked)" : ""}`,
-    ),
-  );
-  return 0;
+  return await withReadInvalidationPersistence(config.root, session, () => {
+    const totals = {
+      invalidated: 0,
+      "no-change": 0,
+      skipped: 0,
+      unresolved: 0,
+      updated: 0,
+    };
+    const rows = orderedItems(session, graph, journal.entries).map(
+      ({ item, mappedScope }) => {
+        const status = effectiveStatus(item, graph, journal.entries);
+        totals[status] += 1;
+        return {
+          blocked: isBlocked(item, session, graph, journal.entries),
+          id: item.id,
+          kind: item.kind,
+          scope: mappedScope,
+          status,
+        };
+      },
+    );
+    const doc = { items: rows, totals };
+    emitDoc(
+      io,
+      flags["--json"] === true,
+      doc,
+      rows.map(
+        (row) =>
+          `${row.id} ${row.kind} ${row.scope} ${row.status}${row.blocked ? " (blocked)" : ""}`,
+      ),
+    );
+    return 0;
+  });
 }
 
 async function reviewNext(io, cwd, argv) {
@@ -2778,29 +2833,31 @@ async function reviewNext(io, cwd, argv) {
   const graph = await loadGraph(config.root, config.groups);
   const session = await requireSession(config.root, positionals[0]);
   const journal = await readJournal(config.root);
-  const next = orderedItems(session, graph, journal.entries).find(
-    ({ item }) => {
-      const status = effectiveStatus(item, graph, journal.entries);
-      return (
-        (status === "unresolved" || status === "invalidated") &&
-        !isBlocked(item, session, graph, journal.entries)
-      );
-    },
-  );
-  const doc =
-    next === undefined
-      ? { fullyResolved: true }
-      : {
-          fullyResolved: false,
-          item: itemPayload(next.item, session, graph, journal.entries),
-        };
-  emitDoc(io, flags["--json"] === true, doc, [
-    next === undefined
-      ? "review: fully resolved"
-      : `review: next is ${next.item.id}`,
-    ...(next === undefined ? [] : [canonicalJson(doc)]),
-  ]);
-  return 0;
+  return await withReadInvalidationPersistence(config.root, session, () => {
+    const next = orderedItems(session, graph, journal.entries).find(
+      ({ item }) => {
+        const status = effectiveStatus(item, graph, journal.entries);
+        return (
+          (status === "unresolved" || status === "invalidated") &&
+          !isBlocked(item, session, graph, journal.entries)
+        );
+      },
+    );
+    const doc =
+      next === undefined
+        ? { fullyResolved: true }
+        : {
+            fullyResolved: false,
+            item: itemPayload(next.item, session, graph, journal.entries),
+          };
+    emitDoc(io, flags["--json"] === true, doc, [
+      next === undefined
+        ? "review: fully resolved"
+        : `review: next is ${next.item.id}`,
+      ...(next === undefined ? [] : [canonicalJson(doc)]),
+    ]);
+    return 0;
+  });
 }
 
 async function reviewShow(io, cwd, argv) {
@@ -2810,9 +2867,11 @@ async function reviewShow(io, cwd, argv) {
   const session = await requireSession(config.root, positionals[0]);
   const item = requireItem(session, positionals[1]);
   const journal = await readJournal(config.root);
-  const doc = itemPayload(item, session, graph, journal.entries);
-  emitDoc(io, flags["--json"] === true, doc, [canonicalJson(doc)]);
-  return 0;
+  return await withReadInvalidationPersistence(config.root, session, () => {
+    const doc = itemPayload(item, session, graph, journal.entries);
+    emitDoc(io, flags["--json"] === true, doc, [canonicalJson(doc)]);
+    return 0;
+  });
 }
 
 async function reviewExport(io, cwd, argv) {
@@ -2821,17 +2880,19 @@ async function reviewExport(io, cwd, argv) {
   const graph = await loadGraph(config.root, config.groups);
   const session = await requireSession(config.root, positionals[0]);
   const journal = await readJournal(config.root);
-  // A single JSON document is export's only output form (SPEC 10.7).
-  emitJsonOnly(io, {
-    creationParameters: null,
-    decompositions: session.decompositions,
-    items: orderedItems(session, graph, journal.entries).map(({ item }) =>
-      itemPayload(item, session, graph, journal.entries),
-    ),
-    name: session.name,
-    strategy: session.strategy,
+  return await withReadInvalidationPersistence(config.root, session, () => {
+    // A single JSON document is export's only output form (SPEC 10.7).
+    emitJsonOnly(io, {
+      creationParameters: null,
+      decompositions: session.decompositions,
+      items: orderedItems(session, graph, journal.entries).map(({ item }) =>
+        itemPayload(item, session, graph, journal.entries),
+      ),
+      name: session.name,
+      strategy: session.strategy,
+    });
+    return 0;
   });
-  return 0;
 }
 
 async function commandReview(io, cwd, argv) {
@@ -2888,6 +2949,14 @@ async function commandReview(io, cwd, argv) {
  *   or configuration error (exit 2) appends one fixed line to
  *   `.xspec/journal`, creating the file when absent; mutating commands, and
  *   the entries `rename`/`move` append, are unchanged; see runXspec.
+ * - `persistReadInvalidation` (VIOL-CORE-PERSISTREADS): review reads persist
+ *   read-time invalidation — when `status`, `next`, `show`, or `export`
+ *   computes that a resolved item's recorded state differs from the current
+ *   graph (SPEC 10.4), it rewrites that item's stored status to
+ *   `invalidated` in the session file; reads over sessions with no stale
+ *   resolution write nothing (`review list` computes no invalidation and is
+ *   unchanged, as are the mutating subcommands); see
+ *   withReadInvalidationPersistence.
  */
 let deviations = {};
 

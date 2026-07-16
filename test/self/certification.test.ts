@@ -30,6 +30,8 @@ import {
   violCoreNolockBinding,
   VIOL_CORE_PARTIALWRITE_CERTIFIES,
   violCorePartialwriteBinding,
+  VIOL_CORE_PERSISTREADS_CERTIFIES,
+  violCorePersistreadsBinding,
   VIOL_CORE_STALELOCK_CERTIFIES,
   violCoreStalelockBinding,
 } from "./certification-fixtures.js";
@@ -174,6 +176,18 @@ test(
       violCoreChattyreadsBinding(),
       CONF_CORE_IN_SCOPE,
       VIOL_CORE_CHATTYREADS_CERTIFIES,
+    );
+  },
+);
+
+test(
+  "VIOL-CORE-PERSISTREADS violator: exactly T10.4-5 fails, every other §CONF-CORE in-scope test passes (C-1)",
+  { timeout: RUN_TIMEOUT_MS },
+  async () => {
+    await verifyViolatorExpectedFailures(
+      violCorePersistreadsBinding(),
+      CONF_CORE_IN_SCOPE,
+      VIOL_CORE_PERSISTREADS_CERTIFIES,
     );
   },
 );

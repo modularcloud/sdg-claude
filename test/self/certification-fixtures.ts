@@ -155,3 +155,24 @@ export const VIOL_CORE_CHATTYREADS_CERTIFIES: readonly string[] = [
   "T6.1-1",
   "T13.4-5",
 ];
+
+/**
+ * VIOL-CORE-PERSISTREADS (CERTIFICATIONS.md §VIOL-CORE-PERSISTREADS): the
+ * CONF-CORE conformer, except review reads persist read-time invalidation —
+ * when `status`, `next`, `show`, or `export` computes that a resolved item's
+ * recorded state differs from the current graph (SPEC 10.4), it rewrites
+ * that item's stored status to `invalidated` in the session file. Reads over
+ * sessions with no stale resolution write nothing.
+ */
+export function violCorePersistreadsBinding(): ProductBinding {
+  return nodeFixtureBinding(
+    "VIOL-CORE-PERSISTREADS violator",
+    "conf-core/bin-persistreads.mjs",
+  );
+}
+
+/**
+ * The tests §VIOL-CORE-PERSISTREADS certifies, verbatim from
+ * CERTIFICATIONS.md.
+ */
+export const VIOL_CORE_PERSISTREADS_CERTIFIES: readonly string[] = ["T10.4-5"];
