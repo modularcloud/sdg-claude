@@ -1,5 +1,12 @@
 // Certification of CERTIFICATIONS.md fixtures (TEST-SPEC 17 C-1, C-2).
 //
+// One per-fixture verification is generated below for every entry of the
+// CERTIFICATION_FIXTURES manifest (certification-fixtures.ts) — all four
+// conformers and all thirteen violators — and the whole-document gate
+// (certification-document.test.ts) proves that manifest equal to
+// specs/CERTIFICATIONS.md, so certification demonstrably runs against each
+// fixture in the document (C-1).
+//
 // Each conformer's in-scope tests run against its fixture executable through
 // the certification runner (certification-runner.ts) — the identical
 // registered bodies the Vitest suite runs against the built product (C-2
@@ -7,10 +14,7 @@
 // against it; a violator when exactly its certified tests fail against it —
 // as diagnosed assertion failures, never harness errors or hangs — and every
 // other in-scope test passes (the expected-failure contract of the
-// CERTIFICATIONS.md preamble). Remaining violator checks arrive with their
-// CERT tasks, and the full C-1 gate over every fixture (conformers and all
-// 13 violators, with per-fixture results in the harness-self CI output) is
-// CERT-18's.
+// CERTIFICATIONS.md preamble).
 //
 // The per-fixture report is printed on every run so certification results
 // are legible per fixture, per test, in the harness-self CI job output
@@ -19,42 +23,7 @@
 import { expect, test } from "vitest";
 import type { ProductBinding } from "../helpers/subprocess.js";
 import { productTestSuite } from "../suite/registry/index.js";
-import {
-  CONF_CORE_IN_SCOPE,
-  CONF_DISC_IN_SCOPE,
-  CONF_MD_IN_SCOPE,
-  CONF_VALID_IN_SCOPE,
-  confCoreBinding,
-  confDiscBinding,
-  confMdBinding,
-  confValidBinding,
-  VIOL_CORE_CHATTYREADS_CERTIFIES,
-  violCoreChattyreadsBinding,
-  VIOL_CORE_EARLYWRITE_CERTIFIES,
-  violCoreEarlywriteBinding,
-  VIOL_CORE_NOLOCK_CERTIFIES,
-  violCoreNolockBinding,
-  VIOL_CORE_PARTIALWRITE_CERTIFIES,
-  violCorePartialwriteBinding,
-  VIOL_CORE_PERSISTREADS_CERTIFIES,
-  violCorePersistreadsBinding,
-  VIOL_CORE_STALELOCK_CERTIFIES,
-  violCoreStalelockBinding,
-  VIOL_DISC_DERIVED_CERTIFIES,
-  violDiscDerivedBinding,
-  VIOL_DISC_DIALECT_CERTIFIES,
-  violDiscDialectBinding,
-  VIOL_DISC_SYMLINK_CERTIFIES,
-  violDiscSymlinkBinding,
-  VIOL_MD_CLASS_CERTIFIES,
-  violMdClassBinding,
-  VIOL_MD_CR_CERTIFIES,
-  violMdCrBinding,
-  VIOL_VALID_CTRL_CERTIFIES,
-  violValidCtrlBinding,
-  VIOL_VALID_WIDE_CERTIFIES,
-  violValidWideBinding,
-} from "./certification-fixtures.js";
+import { CERTIFICATION_FIXTURES } from "./certification-fixtures.js";
 import {
   idsWithOutcome,
   renderFixtureReport,
@@ -143,190 +112,41 @@ async function verifyViolatorExpectedFailures(
   });
 }
 
-test(
-  "CONF-CORE conformer: every CERTIFICATIONS.md in-scope test passes against the fixture (C-1)",
-  { timeout: RUN_TIMEOUT_MS },
-  async () => {
-    await verifyConformerAllPass(confCoreBinding(), CONF_CORE_IN_SCOPE);
-  },
-);
+/** Prose ID list for test titles: "A", "A and B", "A, B, and C". */
+function prettyIdList(ids: readonly string[]): string {
+  const last = ids[ids.length - 1];
+  if (last === undefined) {
+    throw new Error("prettyIdList: empty ID list");
+  }
+  if (ids.length === 1) return last;
+  if (ids.length === 2) return `${ids[0]} and ${last}`;
+  return `${ids.slice(0, -1).join(", ")}, and ${last}`;
+}
 
-test(
-  "VIOL-CORE-NOLOCK violator: exactly T13.5-2 fails, every other §CONF-CORE in-scope test passes (C-1)",
-  { timeout: RUN_TIMEOUT_MS },
-  async () => {
-    await verifyViolatorExpectedFailures(
-      violCoreNolockBinding(),
-      CONF_CORE_IN_SCOPE,
-      VIOL_CORE_NOLOCK_CERTIFIES,
+for (const conformerEntry of CERTIFICATION_FIXTURES) {
+  test(
+    `${conformerEntry.name} conformer: every CERTIFICATIONS.md in-scope test passes against the fixture (C-1)`,
+    { timeout: RUN_TIMEOUT_MS },
+    async () => {
+      await verifyConformerAllPass(
+        conformerEntry.binding(),
+        conformerEntry.inScope,
+      );
+    },
+  );
+  for (const violatorEntry of conformerEntry.violators) {
+    const fails = violatorEntry.certifies.length === 1 ? "fails" : "fail";
+    test(
+      `${violatorEntry.name} violator: exactly ${prettyIdList(violatorEntry.certifies)} ${fails}, ` +
+        `every other §${conformerEntry.name} in-scope test passes (C-1)`,
+      { timeout: RUN_TIMEOUT_MS },
+      async () => {
+        await verifyViolatorExpectedFailures(
+          violatorEntry.binding(),
+          conformerEntry.inScope,
+          violatorEntry.certifies,
+        );
+      },
     );
-  },
-);
-
-test(
-  "VIOL-CORE-EARLYWRITE violator: exactly T13.5-1 and T13.5-4 fail, every other §CONF-CORE in-scope test passes (C-1)",
-  { timeout: RUN_TIMEOUT_MS },
-  async () => {
-    await verifyViolatorExpectedFailures(
-      violCoreEarlywriteBinding(),
-      CONF_CORE_IN_SCOPE,
-      VIOL_CORE_EARLYWRITE_CERTIFIES,
-    );
-  },
-);
-
-test(
-  "VIOL-CORE-STALELOCK violator: exactly T13.5-3 fails, every other §CONF-CORE in-scope test passes (C-1)",
-  { timeout: RUN_TIMEOUT_MS },
-  async () => {
-    await verifyViolatorExpectedFailures(
-      violCoreStalelockBinding(),
-      CONF_CORE_IN_SCOPE,
-      VIOL_CORE_STALELOCK_CERTIFIES,
-    );
-  },
-);
-
-test(
-  "VIOL-CORE-PARTIALWRITE violator: exactly T13.5-5 fails, every other §CONF-CORE in-scope test passes (C-1)",
-  { timeout: RUN_TIMEOUT_MS },
-  async () => {
-    await verifyViolatorExpectedFailures(
-      violCorePartialwriteBinding(),
-      CONF_CORE_IN_SCOPE,
-      VIOL_CORE_PARTIALWRITE_CERTIFIES,
-    );
-  },
-);
-
-test(
-  "VIOL-CORE-CHATTYREADS violator: exactly T6.1-1 and T13.4-5 fail, every other §CONF-CORE in-scope test passes (C-1)",
-  { timeout: RUN_TIMEOUT_MS },
-  async () => {
-    await verifyViolatorExpectedFailures(
-      violCoreChattyreadsBinding(),
-      CONF_CORE_IN_SCOPE,
-      VIOL_CORE_CHATTYREADS_CERTIFIES,
-    );
-  },
-);
-
-test(
-  "VIOL-CORE-PERSISTREADS violator: exactly T10.4-5 fails, every other §CONF-CORE in-scope test passes (C-1)",
-  { timeout: RUN_TIMEOUT_MS },
-  async () => {
-    await verifyViolatorExpectedFailures(
-      violCorePersistreadsBinding(),
-      CONF_CORE_IN_SCOPE,
-      VIOL_CORE_PERSISTREADS_CERTIFIES,
-    );
-  },
-);
-
-test(
-  "CONF-VALID conformer: every CERTIFICATIONS.md in-scope test passes against the fixture (C-1)",
-  { timeout: RUN_TIMEOUT_MS },
-  async () => {
-    await verifyConformerAllPass(confValidBinding(), CONF_VALID_IN_SCOPE);
-  },
-);
-
-test(
-  "VIOL-VALID-CTRL violator: exactly T1.4-1, T1.4-4, and P-1 fail, every other §CONF-VALID in-scope test passes (C-1)",
-  { timeout: RUN_TIMEOUT_MS },
-  async () => {
-    await verifyViolatorExpectedFailures(
-      violValidCtrlBinding(),
-      CONF_VALID_IN_SCOPE,
-      VIOL_VALID_CTRL_CERTIFIES,
-    );
-  },
-);
-
-test(
-  "VIOL-VALID-WIDE violator: exactly T1.4-2, T1.4-4, and P-1 fail, every other §CONF-VALID in-scope test passes (C-1)",
-  { timeout: RUN_TIMEOUT_MS },
-  async () => {
-    await verifyViolatorExpectedFailures(
-      violValidWideBinding(),
-      CONF_VALID_IN_SCOPE,
-      VIOL_VALID_WIDE_CERTIFIES,
-    );
-  },
-);
-
-test(
-  "CONF-MD conformer: every CERTIFICATIONS.md in-scope test passes against the fixture (C-1)",
-  { timeout: RUN_TIMEOUT_MS },
-  async () => {
-    await verifyConformerAllPass(confMdBinding(), CONF_MD_IN_SCOPE);
-  },
-);
-
-test(
-  "VIOL-MD-CLASS violator: exactly T3-3 and P-2 fail, every other §CONF-MD in-scope test passes (C-1)",
-  { timeout: RUN_TIMEOUT_MS },
-  async () => {
-    await verifyViolatorExpectedFailures(
-      violMdClassBinding(),
-      CONF_MD_IN_SCOPE,
-      VIOL_MD_CLASS_CERTIFIES,
-    );
-  },
-);
-
-test(
-  "VIOL-MD-CR violator: exactly T3-4 and P-2 fail, every other §CONF-MD in-scope test passes (C-1)",
-  { timeout: RUN_TIMEOUT_MS },
-  async () => {
-    await verifyViolatorExpectedFailures(
-      violMdCrBinding(),
-      CONF_MD_IN_SCOPE,
-      VIOL_MD_CR_CERTIFIES,
-    );
-  },
-);
-
-test(
-  "CONF-DISC conformer: every CERTIFICATIONS.md in-scope test passes against the fixture (C-1)",
-  { timeout: RUN_TIMEOUT_MS },
-  async () => {
-    await verifyConformerAllPass(confDiscBinding(), CONF_DISC_IN_SCOPE);
-  },
-);
-
-test(
-  "VIOL-DISC-DIALECT violator: exactly T7-4 fails, every other §CONF-DISC in-scope test passes (C-1)",
-  { timeout: RUN_TIMEOUT_MS },
-  async () => {
-    await verifyViolatorExpectedFailures(
-      violDiscDialectBinding(),
-      CONF_DISC_IN_SCOPE,
-      VIOL_DISC_DIALECT_CERTIFIES,
-    );
-  },
-);
-
-test(
-  "VIOL-DISC-SYMLINK violator: exactly T7-5 fails, every other §CONF-DISC in-scope test passes (C-1)",
-  { timeout: RUN_TIMEOUT_MS },
-  async () => {
-    await verifyViolatorExpectedFailures(
-      violDiscSymlinkBinding(),
-      CONF_DISC_IN_SCOPE,
-      VIOL_DISC_SYMLINK_CERTIFIES,
-    );
-  },
-);
-
-test(
-  "VIOL-DISC-DERIVED violator: exactly T7-6 fails, every other §CONF-DISC in-scope test passes (C-1)",
-  { timeout: RUN_TIMEOUT_MS },
-  async () => {
-    await verifyViolatorExpectedFailures(
-      violDiscDerivedBinding(),
-      CONF_DISC_IN_SCOPE,
-      VIOL_DISC_DERIVED_CERTIFIES,
-    );
-  },
-);
+  }
+}
