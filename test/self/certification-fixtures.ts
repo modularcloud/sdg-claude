@@ -350,3 +350,22 @@ export function violDiscSymlinkBinding(): ProductBinding {
 
 /** The tests §VIOL-DISC-SYMLINK certifies, verbatim from CERTIFICATIONS.md. */
 export const VIOL_DISC_SYMLINK_CERTIFIES: readonly string[] = ["T7-5"];
+
+/**
+ * VIOL-DISC-DERIVED (CERTIFICATIONS.md §VIOL-DISC-DERIVED): the CONF-DISC
+ * conformer, except discovery does not apply the source exclusion of SPEC
+ * 13.4 — a path whose file name contains `.xspec.`, a file under `.xspec/`,
+ * or a file at an enabled Markdown emit destination, when matched by a
+ * spec-group glob, is treated as an ordinary match. Glob semantics, the
+ * dot-segment rule, link behavior, 14.19 for non-`.mdx` matches, and the
+ * import and empty-map rules are unchanged.
+ */
+export function violDiscDerivedBinding(): ProductBinding {
+  return nodeFixtureBinding(
+    "VIOL-DISC-DERIVED violator",
+    "conf-disc/bin-derived.mjs",
+  );
+}
+
+/** The tests §VIOL-DISC-DERIVED certifies, verbatim from CERTIFICATIONS.md. */
+export const VIOL_DISC_DERIVED_CERTIFIES: readonly string[] = ["T7-6"];

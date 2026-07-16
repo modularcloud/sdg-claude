@@ -981,7 +981,11 @@ async function discoverSources(config) {
       : [],
   );
   const excluded = (rel) => isXspecClassified(rel) || destinations.has(rel);
-  const kept = matched.filter((rel) => !excluded(rel));
+  // §VIOL-DISC-DERIVED (CERT-17): under `noDerivedExclusion` the 13.4
+  // exclusion is skipped entirely — every glob match is an ordinary match.
+  const kept = deviations.noDerivedExclusion
+    ? matched
+    : matched.filter((rel) => !excluded(rel));
   /** @type {Finding[]} */
   const findings = [];
   /** @type {string[]} */
