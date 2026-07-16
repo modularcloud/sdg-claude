@@ -33,7 +33,12 @@
 //   codes are deliberately unasserted — plus the final `build`'s
 //   byte-equality to a clean build; its held-phase reads run while the
 //   mutator is held (§VIOL-CORE-PARTIALWRITE's expected-failure analysis
-//   depends on exactly this shape).
+//   depends on exactly this shape). The clean-build compare excludes the
+//   journal — durable, not derived (SPEC 13.4): the 13.5 tests assert hold,
+//   exclusion, and derived-file behavior, never journal bytes
+//   (§VIOL-CORE-CHATTYREADS's expected-failure analysis depends on exactly
+//   that); whether `build` and read commands modify the journal is T6.1-1's
+//   and T13.4-5's charter.
 //
 // Conservative operationalizations (noted per H-3/H-4):
 // - "Proceeds only once the file is deleted" (T13.5-1): the deterministic
@@ -798,6 +803,19 @@ const T13_5_3 = defineProductTest({
 const STORM_BUILDS = 4;
 const STORM_QUERIES = 4;
 
+/**
+ * Snapshot exclusion for the storm arm's clean-build compare: omit the
+ * journal — durable, not derived (SPEC 13.4). T13.5-4's charter is that any
+ * derived-file inconsistency is resolved by the final `build`; whether
+ * `build` and read commands modify the journal is T6.1-1's and T13.4-5's,
+ * and CERTIFICATIONS.md's §VIOL-CORE-CHATTYREADS expected-failure set
+ * depends on the 13.5 tests asserting derived-file behavior, never journal
+ * bytes.
+ */
+function excludeJournalFile(relPathBytes: Uint8Array): boolean {
+  return Buffer.from(relPathBytes).toString("latin1") === ".xspec/journal";
+}
+
 const T13_5_4 = defineProductTest({
   id: "T13.5-4",
   title:
@@ -927,7 +945,9 @@ const T13_5_4 = defineProductTest({
 
       // Any derived-file inconsistency is resolved by one final `build`,
       // byte-equal to a clean build of the identical fixture (H-6
-      // two-directory style).
+      // two-directory style). The journal is excluded (see
+      // excludeJournalFile): the compare's subject is derived files, and the
+      // journal — durable, not derived — belongs to T6.1-1/T13.4-5.
       await buildOk(
         product,
         storm,
@@ -939,7 +959,9 @@ const T13_5_4 = defineProductTest({
         reference.root,
         "T13.5-4: the storm workspace after one final `build` vs a clean " +
           "build of the identical fixture — any derived-file inconsistency " +
-          "is resolved, byte-equal to a clean build (SPEC 13.5, 12.0)",
+          "is resolved, byte-equal to a clean build (SPEC 13.5, 12.0; the " +
+          "journal, durable rather than derived, is outside this compare)",
+        { exclude: excludeJournalFile },
       );
     } finally {
       await storm.dispose();

@@ -392,6 +392,17 @@ class LiteralParser {
  * spec groups. The in-scope shape is one spec group and no other keys
  * (CERTIFICATIONS.md §CONF-CORE); `specs` is required (SPEC 7).
  */
+/**
+ * The workspace root of this invocation's successful configuration
+ * resolution, or null before one succeeds (module state; each bin*.mjs entry
+ * runs exactly one invocation per process). Consumed only by the
+ * VIOL-CORE-CHATTYREADS deviation in runXspec, which appends its fixed
+ * journal line after the command body has returned: every command resolves
+ * its configuration via loadConfig before it can reach a non-exit-2 outcome,
+ * so the root is always set by the time that deviation consults it.
+ */
+let lastResolvedRoot = null;
+
 async function loadConfig(cwd, configFlag) {
   const configPath = await findConfigPath(cwd, configFlag);
   let text;
@@ -431,7 +442,9 @@ async function loadConfig(cwd, configFlag) {
     }
     groups[name] = globs;
   }
-  return { root: path.dirname(configPath), groups };
+  const root = path.dirname(configPath);
+  lastResolvedRoot = root;
+  return { root, groups };
 }
 
 // ---------------------------------------------------------------------------
@@ -2870,8 +2883,62 @@ async function commandReview(io, cwd, argv) {
  * - `partialDerivedWrites` (VIOL-CORE-PARTIALWRITE): derived-file writes
  *   expose a sustained strict-prefix interval before the complete content
  *   appears; durable files are unaffected; see regenerate.
+ * - `chattyReads` (VIOL-CORE-CHATTYREADS): `build` and the read commands
+ *   modify the journal — each such invocation that is not refused as a usage
+ *   or configuration error (exit 2) appends one fixed line to
+ *   `.xspec/journal`, creating the file when absent; mutating commands, and
+ *   the entries `rename`/`move` append, are unchanged; see runXspec.
  */
 let deviations = {};
+
+/**
+ * VIOL-CORE-CHATTYREADS (CERTIFICATIONS.md): the invocations that append the
+ * fixed line — `build` and the read commands of SPEC 13.3 (for `review`,
+ * exactly the read subcommands; the mutating `create`/`resolve`/`split` are
+ * unchanged, as are `rename` and `move`). The subcommand token is read the
+ * same way commandReview dispatches it, so an unknown-subcommand invocation
+ * (exit 2) never matches anyway.
+ */
+const CHATTY_READ_COMMANDS = new Set([
+  "build",
+  "check",
+  "ids",
+  "show",
+  "query",
+  "coverage",
+  "impact",
+]);
+const CHATTY_REVIEW_READ_SUBCOMMANDS = new Set([
+  "list",
+  "status",
+  "next",
+  "show",
+  "export",
+]);
+
+function isChattyReadInvocation(argv) {
+  if (CHATTY_READ_COMMANDS.has(argv[0])) return true;
+  return argv[0] === "review" && CHATTY_REVIEW_READ_SUBCOMMANDS.has(argv[1]);
+}
+
+/**
+ * VIOL-CORE-CHATTYREADS (CERTIFICATIONS.md): the one fixed line, appended
+ * through appendJournal exactly as real entries are (canonicalJson of this
+ * object — fixed bytes every time, so T6.1-2-style determinism holds).
+ * Deliberately well-formed under this fixture's own journal reader — a
+ * rename entry whose empty path/from/to can never match an identity (every
+ * identity is `<rel>#<id>` with a non-empty file part), so it maps nothing —
+ * keeping every journal consumer (`check`'s 14.13 integrity scan, identity
+ * mapping, review reads) behaving exactly as the conformer: only the
+ * journal's bytes deviate, which is the deviation.
+ */
+const CHATTY_READ_ENTRY = {
+  deviation: "VIOL-CORE-CHATTYREADS",
+  from: "",
+  kind: "rename",
+  path: "",
+  to: "",
+};
 
 /**
  * Run one xspec invocation. Returns the exit code (SPEC 12.0 partition).
@@ -2885,6 +2952,24 @@ export async function runXspec(argv, cwd, options = {}) {
     stdout: (text) => process.stdout.write(text),
     stderr: (text) => process.stderr.write(text),
   };
+  const code = await dispatchCommand(io, cwd, argv);
+  if (deviations.chattyReads && code !== 2 && isChattyReadInvocation(argv)) {
+    // VIOL-CORE-CHATTYREADS (CERTIFICATIONS.md): the append happens after
+    // the command's own work, against the root the command actually resolved
+    // (set by loadConfig on every path that reaches a non-exit-2 outcome; the
+    // null guard covers only would-be fixture bugs). Refused usage and
+    // configuration errors (exit 2) append nothing — e.g. this scope's
+    // git-less `impact --base`, `--test-hold` on a non-mutating command, and
+    // unknown review subcommands.
+    if (lastResolvedRoot !== null) {
+      await appendJournal(lastResolvedRoot, CHATTY_READ_ENTRY);
+    }
+  }
+  return code;
+}
+
+/** Dispatch one parsed invocation and map its outcome to SPEC 12.0's codes. */
+async function dispatchCommand(io, cwd, argv) {
   const wantsJson = argv.includes("--json");
   try {
     const command = argv[0];

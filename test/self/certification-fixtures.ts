@@ -131,3 +131,27 @@ export function violCorePartialwriteBinding(): ProductBinding {
  * CERTIFICATIONS.md.
  */
 export const VIOL_CORE_PARTIALWRITE_CERTIFIES: readonly string[] = ["T13.5-5"];
+
+/**
+ * VIOL-CORE-CHATTYREADS (CERTIFICATIONS.md §VIOL-CORE-CHATTYREADS): the
+ * CONF-CORE conformer, except `build` and the read commands modify the
+ * journal — each such invocation that is not refused as a usage or
+ * configuration error (exit 2) appends one fixed line to `.xspec/journal`,
+ * creating the file when absent. Mutating commands, and the entries
+ * `rename`/`move` append, are unchanged.
+ */
+export function violCoreChattyreadsBinding(): ProductBinding {
+  return nodeFixtureBinding(
+    "VIOL-CORE-CHATTYREADS violator",
+    "conf-core/bin-chattyreads.mjs",
+  );
+}
+
+/**
+ * The tests §VIOL-CORE-CHATTYREADS certifies, verbatim from
+ * CERTIFICATIONS.md.
+ */
+export const VIOL_CORE_CHATTYREADS_CERTIFIES: readonly string[] = [
+  "T6.1-1",
+  "T13.4-5",
+];

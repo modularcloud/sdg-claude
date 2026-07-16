@@ -22,6 +22,8 @@ import { productTestSuite } from "../suite/registry/index.js";
 import {
   CONF_CORE_IN_SCOPE,
   confCoreBinding,
+  VIOL_CORE_CHATTYREADS_CERTIFIES,
+  violCoreChattyreadsBinding,
   VIOL_CORE_EARLYWRITE_CERTIFIES,
   violCoreEarlywriteBinding,
   VIOL_CORE_NOLOCK_CERTIFIES,
@@ -160,6 +162,18 @@ test(
       violCorePartialwriteBinding(),
       CONF_CORE_IN_SCOPE,
       VIOL_CORE_PARTIALWRITE_CERTIFIES,
+    );
+  },
+);
+
+test(
+  "VIOL-CORE-CHATTYREADS violator: exactly T6.1-1 and T13.4-5 fail, every other §CONF-CORE in-scope test passes (C-1)",
+  { timeout: RUN_TIMEOUT_MS },
+  async () => {
+    await verifyViolatorExpectedFailures(
+      violCoreChattyreadsBinding(),
+      CONF_CORE_IN_SCOPE,
+      VIOL_CORE_CHATTYREADS_CERTIFIES,
     );
   },
 );
