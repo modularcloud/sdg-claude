@@ -69,3 +69,25 @@ export function violCoreNolockBinding(): ProductBinding {
 
 /** The tests §VIOL-CORE-NOLOCK certifies, verbatim from CERTIFICATIONS.md. */
 export const VIOL_CORE_NOLOCK_CERTIFIES: readonly string[] = ["T13.5-2"];
+
+/**
+ * VIOL-CORE-EARLYWRITE (CERTIFICATIONS.md §VIOL-CORE-EARLYWRITE): the
+ * CONF-CORE conformer, except a mutating command performs its workspace
+ * modifications before creating the hold file — it acquires exclusivity,
+ * completes the operation's writes (journal append included), then creates
+ * the hold file, waits for its deletion, and exits normally.
+ */
+export function violCoreEarlywriteBinding(): ProductBinding {
+  return nodeFixtureBinding(
+    "VIOL-CORE-EARLYWRITE violator",
+    "conf-core/bin-earlywrite.mjs",
+  );
+}
+
+/**
+ * The tests §VIOL-CORE-EARLYWRITE certifies, verbatim from CERTIFICATIONS.md.
+ */
+export const VIOL_CORE_EARLYWRITE_CERTIFIES: readonly string[] = [
+  "T13.5-1",
+  "T13.5-4",
+];

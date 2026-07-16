@@ -22,6 +22,8 @@ import { productTestSuite } from "../suite/registry/index.js";
 import {
   CONF_CORE_IN_SCOPE,
   confCoreBinding,
+  VIOL_CORE_EARLYWRITE_CERTIFIES,
+  violCoreEarlywriteBinding,
   VIOL_CORE_NOLOCK_CERTIFIES,
   violCoreNolockBinding,
 } from "./certification-fixtures.js";
@@ -118,6 +120,18 @@ test(
       violCoreNolockBinding(),
       CONF_CORE_IN_SCOPE,
       VIOL_CORE_NOLOCK_CERTIFIES,
+    );
+  },
+);
+
+test(
+  "VIOL-CORE-EARLYWRITE violator: exactly T13.5-1 and T13.5-4 fail, every other §CONF-CORE in-scope test passes (C-1)",
+  { timeout: RUN_TIMEOUT_MS },
+  async () => {
+    await verifyViolatorExpectedFailures(
+      violCoreEarlywriteBinding(),
+      CONF_CORE_IN_SCOPE,
+      VIOL_CORE_EARLYWRITE_CERTIFIES,
     );
   },
 );

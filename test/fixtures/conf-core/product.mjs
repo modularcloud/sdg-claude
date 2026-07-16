@@ -1754,17 +1754,31 @@ async function runMutating(cwd, configFlag, holdFlag, operate) {
   const lock = deviations.noMutualExclusion
     ? { release: async () => {} }
     : await acquireExclusivity(config.root);
-  try {
-    if (holdFlag !== undefined) {
-      try {
-        await holdAtSeam(holdFlag, cwd);
-      } catch (error) {
-        if (error instanceof UsageError) throw error;
-        throw new UsageError(
-          `cannot create the hold file: ${error.message} (SPEC 13.5, 12.0)`,
-        );
-      }
+  const holdIfRequested = async () => {
+    if (holdFlag === undefined) return;
+    try {
+      await holdAtSeam(holdFlag, cwd);
+    } catch (error) {
+      if (error instanceof UsageError) throw error;
+      throw new UsageError(
+        `cannot create the hold file: ${error.message} (SPEC 13.5, 12.0)`,
+      );
     }
+  };
+  try {
+    if (deviations.writesBeforeHold) {
+      // VIOL-CORE-EARLYWRITE (CERTIFICATIONS.md): the mutating command
+      // performs its workspace modifications before creating the hold file —
+      // it acquires exclusivity (above, unchanged), completes the operation's
+      // writes (journal append included), then creates the hold file, waits
+      // for its deletion, and exits normally with the operation's outcome.
+      // The hold seam's own semantics (empty file, occupied path fails
+      // exit 2) and everything else are exactly the conformer's behavior.
+      const code = await operate(config);
+      await holdIfRequested();
+      return code;
+    }
+    await holdIfRequested();
     return await operate(config);
   } finally {
     await lock.release();
@@ -2787,6 +2801,9 @@ async function commandReview(io, cwd, argv) {
  *
  * - `noMutualExclusion` (VIOL-CORE-NOLOCK): mutating commands do not exclude
  *   one another; see runMutating.
+ * - `writesBeforeHold` (VIOL-CORE-EARLYWRITE): a mutating command performs
+ *   its workspace modifications before creating the hold file; see
+ *   runMutating.
  */
 let deviations = {};
 
