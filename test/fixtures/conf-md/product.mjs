@@ -64,12 +64,13 @@
 //
 // Deviation seam: runXspec(argv, cwd, options) assigns `options` onto the
 // module-level `deviations` switches (all off = this conformer). Each
-// VIOL-MD-* violator entry will be a bin-<name>.mjs passing exactly one
-// switch, consumed in the classification points below:
-//   - §VIOL-MD-CLASS (CERT-12): the line-drop rule's whitespace
-//     classification lives in `isDropWhitespaceCode` — the only whitespace
-//     class the compile consults, feeding both "contained non-whitespace in
-//     the source" and "left empty or whitespace-only".
+// VIOL-MD-* violator entry is a bin-<name>.mjs passing exactly one switch,
+// consumed in the classification points below:
+//   - §VIOL-MD-CLASS (CERT-12, bin-class.mjs): `widenDropWhitespace`,
+//     consumed in `isDropWhitespaceCode` — the line-drop rule's whitespace
+//     classification, the only whitespace class the compile consults,
+//     feeding both "contained non-whitespace in the source" and "left empty
+//     or whitespace-only".
 //   - §VIOL-MD-CR (CERT-13): line-terminator recognition lives in
 //     `terminatorAt` — the only place the compile's line model ends a line.
 // Both points feed the single attributed compile, so a deviation applied
@@ -527,29 +528,55 @@ async function discoverSources(root, groups) {
 
 /**
  * Deviation switches (CERTIFICATIONS.md §VIOL-MD-*), all off in the
- * conformer; assigned by runXspec from each entry's options. §VIOL-MD-CLASS
- * (CERT-12) will consume its switch in `isDropWhitespaceCode`; §VIOL-MD-CR
- * (CERT-13) will consume its switch in `terminatorAt`. Both feed the single
- * attributed compile, so any deviation there is automatically consistent in
- * Markdown output and, through SPEC 1.6, in own and subtree text.
+ * conformer; assigned by runXspec from each entry's options.
+ *   - `widenDropWhitespace` (§VIOL-MD-CLASS, bin-class.mjs, CERT-12):
+ *     consumed in `isDropWhitespaceCode` — the line-drop rule classifies
+ *     U+00A0, U+0085, and U+2028 as whitespace.
+ *   - §VIOL-MD-CR (CERT-13) will consume its switch in `terminatorAt`.
+ * Both points feed the single attributed compile, so any deviation there is
+ * automatically consistent in Markdown output and, through SPEC 1.6, in own
+ * and subtree text.
  */
 let deviations = {};
+
+/**
+ * The boundary code points SPEC 1.4 excludes from both character classes:
+ * U+00A0 (no-break space), U+0085 (next line), U+2028 (line separator).
+ * Under `widenDropWhitespace` (§VIOL-MD-CLASS, bin-class.mjs) the line-drop
+ * rule classifies them as whitespace.
+ */
+const CLASS_BOUNDARY_CODE_POINTS = new Set([0x00a0, 0x0085, 0x2028]);
 
 /**
  * SPEC 1.4's whitespace class, exactly: U+0009–U+000D and U+0020; no other
  * code point (U+00A0, U+0085, U+2028 included) belongs to it. Line dropping
  * (SPEC 3) uses this definition — this predicate is the one whitespace class
- * the compile consults (§VIOL-MD-CLASS's future hook, CERT-12).
+ * the compile consults (§VIOL-MD-CLASS's hook, CERT-12).
+ *
+ * §VIOL-MD-CLASS (bin-class.mjs): under `widenDropWhitespace` the boundary
+ * code points are additionally classified whitespace. The one predicate
+ * feeds both drop-rule decisions, so the drop conjunction ("contained
+ * non-whitespace in the source" and "left empty or whitespace-only") still
+ * implies characters disappeared: a line is dropped exactly when removals
+ * left it holding only whitespace-classified characters — the deviation's "a
+ * line left holding only those code points after removals is dropped" — and
+ * a removal-free line holding only whitespace and boundary code points stays
+ * kept (every removable construct carries ASCII non-whitespace, so such a
+ * line has nothing to remove and now contains no non-whitespace at all).
  */
 function isDropWhitespaceCode(code) {
+  if (deviations.widenDropWhitespace && CLASS_BOUNDARY_CODE_POINTS.has(code)) {
+    return true;
+  }
   return (code >= 0x0009 && code <= 0x000d) || code === 0x0020;
 }
 
 /**
  * True when `text` is empty or consists only of drop-rule whitespace.
- * Iterating UTF-16 code units is exact: every 1.4 whitespace character is a
- * single BMP code unit, and each half of a surrogate pair is outside the
- * class, so any astral code point correctly counts as non-whitespace.
+ * Iterating UTF-16 code units is exact: every 1.4 whitespace character (and
+ * every widened-class boundary code point) is a single BMP code unit, and
+ * each half of a surrogate pair is outside both classes, so any astral code
+ * point correctly counts as non-whitespace.
  */
 function isWhitespaceOnlyForDrop(text) {
   for (let i = 0; i < text.length; i += 1) {
@@ -1564,7 +1591,6 @@ async function commandQuery(io, cwd, argv) {
  */
 export async function runXspec(argv, cwd, options = {}) {
   deviations = options;
-  void deviations; // consumed by the VIOL-MD-* switches (CERT-12, CERT-13)
   const io = {
     stdout: (text) => process.stdout.write(text),
     stderr: (text) => process.stderr.write(text),

@@ -268,3 +268,18 @@ export const CONF_MD_IN_SCOPE: readonly string[] = [
   "P-2",
   "P-3",
 ];
+
+/**
+ * VIOL-MD-CLASS (CERTIFICATIONS.md §VIOL-MD-CLASS): the CONF-MD conformer,
+ * except the line-drop rule classifies U+00A0, U+0085, and U+2028 as
+ * whitespace when deciding whether a line is left empty or whitespace-only —
+ * consistently in Markdown output and, through SPEC 1.6, in own and subtree
+ * text. A line left holding only those code points after removals is dropped
+ * with its terminator.
+ */
+export function violMdClassBinding(): ProductBinding {
+  return nodeFixtureBinding("VIOL-MD-CLASS violator", "conf-md/bin-class.mjs");
+}
+
+/** The tests §VIOL-MD-CLASS certifies, verbatim from CERTIFICATIONS.md. */
+export const VIOL_MD_CLASS_CERTIFIES: readonly string[] = ["T3-3", "P-2"];
