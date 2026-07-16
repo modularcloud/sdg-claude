@@ -1051,6 +1051,61 @@ const CASE_SOURCE = [
   "",
 ].join("\n");
 
+/**
+ * T12.0-6's single-casing path probe as one shared code path: called by the
+ * registered T12.0-6 body on the suite leg and rerun verbatim by the Windows
+ * leg (TEST-SPEC E-6; test/windows/e6-subset.test.ts). Paths compare
+ * byte-wise case-sensitively (SPEC 12.0): in a workspace whose only source is
+ * `specs/A.mdx`, the argument `specs/a.mdx` names no workspace file — exit 2
+ * — even where a case-insensitive filesystem lookup would find the file. The
+ * fixture stages exactly one casing, so it stages identically everywhere.
+ */
+export async function runT1206SingleCasingPathProbe(
+  product: ProductBinding,
+): Promise<void> {
+  await withWorkspace(
+    {
+      files: {
+        "xspec.config.ts": SPECS_ONLY_CONFIG,
+        "specs/A.mdx": PROBE_SOURCE,
+      },
+    },
+    async (workspace) => {
+      await buildOk(product, workspace, "T12.0-6 probe `build`");
+      const controlContext =
+        "T12.0-6 `show specs/A.mdx --json` (probe control)";
+      parseJsonStdout(
+        await expectExit(
+          product,
+          workspace,
+          ["show", "specs/A.mdx", "--json"],
+          0,
+          `${controlContext} — the exactly-spelled path resolves, so the ` +
+            `probe's failure below is attributable to casing alone`,
+        ),
+        controlContext,
+      );
+      const probeContext = "T12.0-6 `show specs/a.mdx --json` (probe)";
+      const probe = await expectExit(
+        product,
+        workspace,
+        ["show", "specs/a.mdx", "--json"],
+        2,
+        `${probeContext} — the workspace's only source is specs/A.mdx: ` +
+          `paths compare byte-wise case-sensitively, so specs/a.mdx names ` +
+          `no workspace file — an unknown-file usage error, even where a ` +
+          `case-insensitive filesystem lookup would find the file ` +
+          `(SPEC 12.0)`,
+      );
+      assertStdoutEmpty(
+        probe,
+        `${probeContext} — stdout is empty under --json on exit 2 ` +
+          `(SPEC 12.0, H-5)`,
+      );
+    },
+  );
+}
+
 const T12_0_6 = defineProductTest({
   id: "T12.0-6",
   title:
@@ -1058,48 +1113,9 @@ const T12_0_6 = defineProductTest({
   run: async (product) => {
     // Single-casing path probe — stageable on any filesystem: the argument
     // must miss byte-wise even where a case-insensitive filesystem lookup
-    // would find the file.
-    await withWorkspace(
-      {
-        files: {
-          "xspec.config.ts": SPECS_ONLY_CONFIG,
-          "specs/A.mdx": PROBE_SOURCE,
-        },
-      },
-      async (workspace) => {
-        await buildOk(product, workspace, "T12.0-6 probe `build`");
-        const controlContext =
-          "T12.0-6 `show specs/A.mdx --json` (probe control)";
-        parseJsonStdout(
-          await expectExit(
-            product,
-            workspace,
-            ["show", "specs/A.mdx", "--json"],
-            0,
-            `${controlContext} — the exactly-spelled path resolves, so the ` +
-              `probe's failure below is attributable to casing alone`,
-          ),
-          controlContext,
-        );
-        const probeContext = "T12.0-6 `show specs/a.mdx --json` (probe)";
-        const probe = await expectExit(
-          product,
-          workspace,
-          ["show", "specs/a.mdx", "--json"],
-          2,
-          `${probeContext} — the workspace's only source is specs/A.mdx: ` +
-            `paths compare byte-wise case-sensitively, so specs/a.mdx names ` +
-            `no workspace file — an unknown-file usage error, even where a ` +
-            `case-insensitive filesystem lookup would find the file ` +
-            `(SPEC 12.0)`,
-        );
-        assertStdoutEmpty(
-          probe,
-          `${probeContext} — stdout is empty under --json on exit 2 ` +
-            `(SPEC 12.0, H-5)`,
-        );
-      },
-    );
+    // would find the file. Shared code path with the Windows-leg rerun
+    // (E-6/CI-01).
+    await runT1206SingleCasingPathProbe(product);
 
     // IDs, tags, and session names (platform-portable staging).
     await withWorkspace(

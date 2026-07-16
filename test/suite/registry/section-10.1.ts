@@ -373,6 +373,64 @@ const T10_1_1 = defineProductTest({
 // T10.1-2 — names
 // ---------------------------------------------------------------------------
 
+/**
+ * T10.1-2's single-casing session-name probe over an already-built workspace
+ * where the name `foo` is free — one shared code path, called by the
+ * registered T10.1-2 body on the suite leg and by the Windows-leg wrapper
+ * (TEST-SPEC E-6; test/windows/e6-subset.test.ts). Only `foo` ever exists on
+ * disk, so the fixture stages identically on any filesystem; on a
+ * case-insensitive one it exposes a product matching session names via
+ * filesystem lookup (`status Foo` must be exit 2, SPEC 10.1, 12.0).
+ */
+export async function probeSessionNameCasing(
+  product: ProductBinding,
+  workspace: TestWorkspace,
+): Promise<void> {
+  await expectExit(
+    product,
+    workspace,
+    ["review", "create", "--strategy", "audit", "--name", "foo"],
+    0,
+    "T10.1-2 `review create --strategy audit --name foo`",
+  );
+  await expectExit(
+    product,
+    workspace,
+    ["review", "status", "foo"],
+    0,
+    "T10.1-2 control: `review status foo` finds the session under its exact name (SPEC 10.1)",
+  );
+  const probeContext =
+    "T10.1-2 `review status Foo --json` — names are case-sensitive for " +
+    "all subcommands, so `Foo` names no session: an unknown session is " +
+    "a usage error (SPEC 10.1, 12.0; single-casing probe, rerun on the " +
+    "Windows leg per E-6/CI-01)";
+  const probe = await expectExit(
+    product,
+    workspace,
+    ["review", "status", "Foo", "--json"],
+    2,
+    probeContext,
+  );
+  assertStdoutEmpty(
+    probe,
+    `${probeContext} — under --json, stdout is byte-empty on exit 2 (H-5)`,
+  );
+}
+
+/**
+ * Self-contained staging of {@link probeSessionNameCasing} for the Windows
+ * leg (E-6/CI-01): fresh workspace, `build`, then the shared probe.
+ */
+export async function runT1012SessionNameCasingProbe(
+  product: ProductBinding,
+): Promise<void> {
+  await withWorkspace(CORE_FILES, async (workspace) => {
+    await buildOk(product, workspace, "T10.1-2 casing probe `build`");
+    await probeSessionNameCasing(product, workspace);
+  });
+}
+
 const T10_1_2 = defineProductTest({
   id: "T10.1-2",
   title:
@@ -444,37 +502,9 @@ const T10_1_2 = defineProductTest({
       // this workspace (the refused creates below create nothing), so the
       // Windows-leg rerun (E-6, CI-01) meets a case-insensitive filesystem
       // with exactly one casing present — exposing a product that matches
-      // session names via filesystem lookup.
-      await expectExit(
-        product,
-        workspace,
-        ["review", "create", "--strategy", "audit", "--name", "foo"],
-        0,
-        "T10.1-2 `review create --strategy audit --name foo`",
-      );
-      await expectExit(
-        product,
-        workspace,
-        ["review", "status", "foo"],
-        0,
-        "T10.1-2 control: `review status foo` finds the session under its exact name (SPEC 10.1)",
-      );
-      const probeContext =
-        "T10.1-2 `review status Foo --json` — names are case-sensitive for " +
-        "all subcommands, so `Foo` names no session: an unknown session is " +
-        "a usage error (SPEC 10.1, 12.0; single-casing probe, rerun on the " +
-        "Windows leg per E-6/CI-01)";
-      const probe = await expectExit(
-        product,
-        workspace,
-        ["review", "status", "Foo", "--json"],
-        2,
-        probeContext,
-      );
-      assertStdoutEmpty(
-        probe,
-        `${probeContext} — under --json, stdout is byte-empty on exit 2 (H-5)`,
-      );
+      // session names via filesystem lookup. Shared code path with that
+      // rerun.
+      await probeSessionNameCasing(product, workspace);
 
       // `create` alone folds ASCII case when checking for an existing
       // session: `FOO` matches `foo`, is treated as an existing session, and
@@ -509,6 +539,73 @@ const T10_1_2 = defineProductTest({
 // caught by the list/check assertions below.
 const NON_SESSION_GARBAGE = "not a session { this is deliberately not JSON [\n";
 
+// The wrong-case-extension non-session (T10.1-3): staged in exactly this one
+// casing — no NAME.json exists anywhere — so the fixture stages identically
+// on any filesystem (E-6).
+const WRONG_CASE_SESSION_FILE = `${REVIEWS_DIR}/NAME.JSON`;
+
+/**
+ * T10.1-3's wrong-case-extension probe over a workspace where
+ * {@link WRONG_CASE_SESSION_FILE} is staged — one shared code path, called by
+ * the registered T10.1-3 body on the suite leg and by the Windows-leg wrapper
+ * (TEST-SPEC E-6; test/windows/e6-subset.test.ts). Only a file named
+ * `<valid-name>.json` is a session and paths compare byte-wise (SPEC 10.1,
+ * 12.0), so `NAME.JSON` is not one: `status NAME` is exit 2 (unknown session)
+ * even where a case-insensitive filesystem lookup would find the file.
+ */
+export async function probeWrongCaseExtensionSession(
+  product: ProductBinding,
+  workspace: TestWorkspace,
+): Promise<void> {
+  const context =
+    'T10.1-3 `review status "NAME" --json` — exit 2 unknown session: ' +
+    "NAME.JSON is not a session, paths compare byte-wise (SPEC 10.1, 12.0; " +
+    "single-casing probe, rerun on the Windows leg per E-6/CI-01)";
+  const result = await expectExit(
+    product,
+    workspace,
+    ["review", "status", "NAME", "--json"],
+    2,
+    context,
+  );
+  assertStdoutEmpty(
+    result,
+    `${context} — under --json, stdout is byte-empty on exit 2 (H-5)`,
+  );
+}
+
+/**
+ * Self-contained staging of {@link probeWrongCaseExtensionSession} for the
+ * Windows leg (E-6/CI-01): fresh workspace, `build`, a real session as the
+ * served-session control, the staged `NAME.JSON` stray, then the shared
+ * probe.
+ */
+export async function runT1013WrongCaseExtensionProbe(
+  product: ProductBinding,
+): Promise<void> {
+  await withWorkspace(CORE_FILES, async (workspace) => {
+    await buildOk(product, workspace, "T10.1-3 wrong-case probe `build`");
+    await expectExit(
+      product,
+      workspace,
+      ["review", "create", "--strategy", "audit", "--name", "real"],
+      0,
+      "T10.1-3 wrong-case probe `review create --strategy audit --name real`",
+    );
+    await workspace.file(WRONG_CASE_SESSION_FILE, NON_SESSION_GARBAGE);
+    await expectExit(
+      product,
+      workspace,
+      ["review", "status", "real"],
+      0,
+      "T10.1-3 wrong-case probe control: `review status real` — sessions " +
+        "resolve with the stray present, so the probe's exit 2 below is " +
+        "attributable to the extension's casing alone (SPEC 10.1)",
+    );
+    await probeWrongCaseExtensionSession(product, workspace);
+  });
+}
+
 const T10_1_3 = defineProductTest({
   id: "T10.1-3",
   title:
@@ -534,7 +631,7 @@ const T10_1_3 = defineProductTest({
       );
       await workspace.file(`${REVIEWS_DIR}/.foo.json`, NON_SESSION_GARBAGE);
       await workspace.file(`${REVIEWS_DIR}/a b.json`, NON_SESSION_GARBAGE);
-      await workspace.file(`${REVIEWS_DIR}/NAME.JSON`, NON_SESSION_GARBAGE);
+      await workspace.file(WRONG_CASE_SESSION_FILE, NON_SESSION_GARBAGE);
 
       // `list`: exactly the one real session — the strays are reported
       // neither as sessions nor as corrupt — and exit 0, since exit 1 is
@@ -574,16 +671,12 @@ const T10_1_3 = defineProductTest({
 
       // Naming the non-sessions finds no session (SPEC 10.1, 12.0): invalid
       // names are usage errors before any lookup; `NAME` is a valid name but
-      // names no session, since NAME.JSON's extension differs byte-wise.
+      // names no session, since NAME.JSON's extension differs byte-wise —
+      // that arm is the shared single-casing probe rerun on the Windows leg
+      // (E-6/CI-01).
       const namingProbes: readonly (readonly [string, string])[] = [
         [".foo", "exit 2 invalid session name (leading `.`)"],
         ["a b", "exit 2 invalid session name (whitespace)"],
-        [
-          "NAME",
-          "exit 2 unknown session — NAME.JSON is not a session, paths " +
-            "compare byte-wise (SPEC 12.0; single-casing probe, rerun on " +
-            "the Windows leg per E-6/CI-01)",
-        ],
       ];
       for (const [name, why] of namingProbes) {
         const context = `T10.1-3 \`review status ${JSON.stringify(name)} --json\` — ${why}`;
@@ -599,6 +692,7 @@ const T10_1_3 = defineProductTest({
           `${context} — under --json, stdout is byte-empty on exit 2 (H-5)`,
         );
       }
+      await probeWrongCaseExtensionSession(product, workspace);
 
       // Ignored by every subcommand: the real session is served unaffected,
       // and a session named after the stray's stem is creatable — notes.txt

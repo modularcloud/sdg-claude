@@ -280,6 +280,38 @@ const CASING_PROBES: readonly DiscoveryProbe[] = [
   { path: "ctl/C.mdx", id: "c", discovered: true },
 ];
 
+/**
+ * T7-4's single-casing glob probe as one shared code path: called by the
+ * registered T7-4 body on the suite leg and rerun verbatim by the Windows leg
+ * (TEST-SPEC E-6; test/windows/e6-subset.test.ts). Glob matching is
+ * case-sensitive on every platform (SPEC 7, 12.0): `SPECS/*.mdx` over
+ * `specs/A.mdx` (and `specs2/b.mdx` over `specs2/B.mdx`) discovers nothing —
+ * on a case-insensitive filesystem a product matching globs through
+ * filesystem lookups wrongly discovers the file. Each path is staged in
+ * exactly one casing, so the fixture stages identically everywhere.
+ */
+export async function runT74SingleCasingGlobProbe(
+  product: ProductBinding,
+): Promise<void> {
+  await withWorkspace(
+    {
+      files: {
+        "xspec.config.ts": specGroupsConfig(CASING_GROUPS),
+        ...probeFiles(CASING_PROBES),
+      },
+    },
+    async (workspace) => {
+      await expectDiscovered(
+        product,
+        workspace,
+        expectedListing(CASING_PROBES),
+        "T7-4 (single-casing case-sensitivity probes: SPECS/*.mdx over " +
+          "specs/A.mdx, specs2/b.mdx over specs2/B.mdx) `ids --json`",
+      );
+    },
+  );
+}
+
 // Byte-semantics probes (T7-4, Linux leg — module header): `é` is U+00E9,
 // two bytes (0xC3 0xA9) in UTF-8, one character. Paths match as their UTF-8
 // bytes (SPEC 7), so `?` (one byte) must NOT match `é.mdx` while `??` (two
@@ -357,24 +389,9 @@ const T7_4 = defineProductTest({
     );
 
     // Case-sensitive matching: the single-casing probes discover nothing;
-    // the control group proves discovery ran.
-    await withWorkspace(
-      {
-        files: {
-          "xspec.config.ts": specGroupsConfig(CASING_GROUPS),
-          ...probeFiles(CASING_PROBES),
-        },
-      },
-      async (workspace) => {
-        await expectDiscovered(
-          product,
-          workspace,
-          expectedListing(CASING_PROBES),
-          "T7-4 (single-casing case-sensitivity probes: SPECS/*.mdx over " +
-            "specs/A.mdx, specs2/b.mdx over specs2/B.mdx) `ids --json`",
-        );
-      },
-    );
+    // the control group proves discovery ran. Shared code path with the
+    // Windows-leg rerun (E-6/CI-01).
+    await runT74SingleCasingGlobProbe(product);
 
     // Patterns resolve relative to the configuration file's directory, not
     // the working directory.
