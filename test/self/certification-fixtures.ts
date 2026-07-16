@@ -110,3 +110,24 @@ export function violCoreStalelockBinding(): ProductBinding {
  * The tests §VIOL-CORE-STALELOCK certifies, verbatim from CERTIFICATIONS.md.
  */
 export const VIOL_CORE_STALELOCK_CERTIFIES: readonly string[] = ["T13.5-3"];
+
+/**
+ * VIOL-CORE-PARTIALWRITE (CERTIFICATIONS.md §VIOL-CORE-PARTIALWRITE): the
+ * CONF-CORE conformer, except derived-file writes are not atomic in their
+ * observable effect — while a derived file is being written, its path holds
+ * a strict prefix of the new content for a sustained interval (long relative
+ * to a concurrent reader's polling cadence) before the complete content
+ * appears. Durable files are unaffected.
+ */
+export function violCorePartialwriteBinding(): ProductBinding {
+  return nodeFixtureBinding(
+    "VIOL-CORE-PARTIALWRITE violator",
+    "conf-core/bin-partialwrite.mjs",
+  );
+}
+
+/**
+ * The tests §VIOL-CORE-PARTIALWRITE certifies, verbatim from
+ * CERTIFICATIONS.md.
+ */
+export const VIOL_CORE_PARTIALWRITE_CERTIFIES: readonly string[] = ["T13.5-5"];

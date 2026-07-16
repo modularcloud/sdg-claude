@@ -26,6 +26,8 @@ import {
   violCoreEarlywriteBinding,
   VIOL_CORE_NOLOCK_CERTIFIES,
   violCoreNolockBinding,
+  VIOL_CORE_PARTIALWRITE_CERTIFIES,
+  violCorePartialwriteBinding,
   VIOL_CORE_STALELOCK_CERTIFIES,
   violCoreStalelockBinding,
 } from "./certification-fixtures.js";
@@ -146,6 +148,18 @@ test(
       violCoreStalelockBinding(),
       CONF_CORE_IN_SCOPE,
       VIOL_CORE_STALELOCK_CERTIFIES,
+    );
+  },
+);
+
+test(
+  "VIOL-CORE-PARTIALWRITE violator: exactly T13.5-5 fails, every other §CONF-CORE in-scope test passes (C-1)",
+  { timeout: RUN_TIMEOUT_MS },
+  async () => {
+    await verifyViolatorExpectedFailures(
+      violCorePartialwriteBinding(),
+      CONF_CORE_IN_SCOPE,
+      VIOL_CORE_PARTIALWRITE_CERTIFIES,
     );
   },
 );

@@ -137,6 +137,41 @@ async function writeFileAtomic(absPath, data) {
   await fsp.rename(tmp, absPath);
 }
 
+/**
+ * VIOL-CORE-PARTIALWRITE (CERTIFICATIONS.md): the sustained strict-prefix
+ * interval. Long relative to a concurrent reader's polling cadence (T13.5-5
+ * polls about once a millisecond), short against every command and test
+ * budget (helpers/subprocess.ts bounds, the per-test watchdogs).
+ */
+const PARTIAL_WRITE_INTERVAL_MS = 50;
+
+/**
+ * VIOL-CORE-PARTIALWRITE (CERTIFICATIONS.md): non-atomic derived-file write.
+ * The target path itself first receives a strict prefix of the new content
+ * (written in place, truncating), holds it for the sustained interval above,
+ * and only then receives the remainder, completing the content. The path is
+ * never unlinked, so a concurrent reader observes the partial file — never
+ * absence — and after the call resolves the path holds the complete bytes
+ * (each completed command still leaves the conformer's final state). Used by
+ * regenerate() alone, under the `partialDerivedWrites` deviation: derived
+ * files only — durable files (journal, sessions, sources) keep the
+ * conformer's atomic writes everywhere.
+ */
+async function writeFilePartialThenComplete(absPath, data) {
+  const bytes = Buffer.from(data);
+  if (bytes.length === 0) {
+    // Empty content has no strict prefix; write atomically. (Unreachable for
+    // this fixture's derived files, which are all non-empty.)
+    await writeFileAtomic(absPath, data);
+    return;
+  }
+  await fsp.mkdir(path.dirname(absPath), { recursive: true });
+  const prefix = bytes.subarray(0, Math.floor(bytes.length / 2));
+  await fsp.writeFile(absPath, prefix);
+  await sleep(PARTIAL_WRITE_INTERVAL_MS);
+  await fsp.appendFile(absPath, bytes.subarray(prefix.length));
+}
+
 /** Whether anything (file, directory, or symlink) occupies the path. */
 async function pathOccupied(absPath) {
   try {
@@ -1062,6 +1097,19 @@ async function readRecordedDerived(root) {
  * regeneration (SPEC 6.4, 6.5).
  */
 async function regenerate(graph) {
+  // VIOL-CORE-PARTIALWRITE (CERTIFICATIONS.md): derived-file writes are not
+  // atomic in their observable effect — while a derived file is being
+  // written, its path holds a strict prefix of the new content for a
+  // sustained interval, long relative to a concurrent reader's polling
+  // cadence, before the complete content appears (see
+  // writeFilePartialThenComplete). regenerate() is this fixture's only
+  // derived-file writer, so switching the writer here deviates every derived
+  // write — generated modules and graph data — and nothing else: durable
+  // files (journal, sessions, sources) are unaffected, orphan removal and
+  // each command's completed final bytes are unchanged.
+  const write = deviations.partialDerivedWrites
+    ? writeFilePartialThenComplete
+    : writeFileAtomic;
   const recorded = await readRecordedDerived(graph.root);
   const current = new Set(graph.files.map((model) => modulePathFor(model.rel)));
   for (const orphan of recorded) {
@@ -1070,15 +1118,12 @@ async function regenerate(graph) {
     }
   }
   for (const model of graph.files) {
-    await writeFileAtomic(
+    await write(
       path.join(graph.root, modulePathFor(model.rel)),
       moduleContent(model),
     );
   }
-  await writeFileAtomic(
-    path.join(graph.root, GRAPH_DATA_REL),
-    graphDataContent(graph),
-  );
+  await write(path.join(graph.root, GRAPH_DATA_REL), graphDataContent(graph));
 }
 
 // ---------------------------------------------------------------------------
@@ -2822,6 +2867,9 @@ async function commandReview(io, cwd, argv) {
  * - `staleLockBlocks` (VIOL-CORE-STALELOCK): workspace exclusivity is not
  *   released by abnormal termination — a lock file left by a killed holder
  *   refuses every later mutating command; see acquireExclusivity.
+ * - `partialDerivedWrites` (VIOL-CORE-PARTIALWRITE): derived-file writes
+ *   expose a sustained strict-prefix interval before the complete content
+ *   appears; durable files are unaffected; see regenerate.
  */
 let deviations = {};
 
