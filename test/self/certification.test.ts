@@ -38,6 +38,8 @@ import {
   violCoreStalelockBinding,
   VIOL_VALID_CTRL_CERTIFIES,
   violValidCtrlBinding,
+  VIOL_VALID_WIDE_CERTIFIES,
+  violValidWideBinding,
 } from "./certification-fixtures.js";
 import {
   idsWithOutcome,
@@ -223,6 +225,18 @@ test(
       violValidCtrlBinding(),
       CONF_VALID_IN_SCOPE,
       VIOL_VALID_CTRL_CERTIFIES,
+    );
+  },
+);
+
+test(
+  "VIOL-VALID-WIDE violator: exactly T1.4-2, T1.4-4, and P-1 fail, every other §CONF-VALID in-scope test passes (C-1)",
+  { timeout: RUN_TIMEOUT_MS },
+  async () => {
+    await verifyViolatorExpectedFailures(
+      violValidWideBinding(),
+      CONF_VALID_IN_SCOPE,
+      VIOL_VALID_WIDE_CERTIFIES,
     );
   },
 );

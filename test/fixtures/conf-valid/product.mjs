@@ -56,8 +56,9 @@
 // (SPEC 2.6) stays on the exact 1.4 whitespace class for every fixture
 // (§VIOL-VALID-WIDE deviates validity, not splitting). Landed switches:
 // `acceptNonWhitespaceControls` (§VIOL-VALID-CTRL, bin-ctrl.mjs, CERT-09) in
-// `valueViolation`'s control branch; CERT-10 (WIDE) adds its switch at
-// `isValidityWhitespace` enforcement when it lands.
+// `valueViolation`'s control branch; `widenValidityWhitespace`
+// (§VIOL-VALID-WIDE, bin-wide.mjs, CERT-10) in `valueViolation`'s whitespace
+// branch — U+00A0/U+0085/U+2028 treated as whitespace for 1.4 validity only.
 
 import { createHash } from "node:crypto";
 import * as fsp from "node:fs/promises";
@@ -481,12 +482,22 @@ async function discoverSources(root, groups) {
 /**
  * SPEC 1.4's whitespace class for *validity*, exactly: U+0009–U+000D and
  * U+0020; no other code point (U+00A0, U+0085, U+2028 included) belongs to
- * it. The VIOL-VALID-WIDE deviation switch (CERT-10) hooks here — validity
- * classification only, never `splitTags` below.
+ * it. The VIOL-VALID-WIDE deviation switch (`widenValidityWhitespace`,
+ * CERT-10) hooks into this class's *enforcement* in `valueViolation` —
+ * validity classification only, never `splitTags` below.
  */
 function isValidityWhitespace(codePoint) {
   return (codePoint >= 0x0009 && codePoint <= 0x000d) || codePoint === 0x0020;
 }
+
+/**
+ * The boundary code points SPEC 1.4 excludes from both character classes:
+ * U+00A0 (no-break space), U+0085 (next line), U+2028 (line separator).
+ * Under `widenValidityWhitespace` (§VIOL-VALID-WIDE, bin-wide.mjs) they are
+ * treated as whitespace for 1.4 validity, so segments and tags containing
+ * them are rejected with 14.4.
+ */
+const WIDE_BOUNDARY_CODE_POINTS = new Set([0x00a0, 0x0085, 0x2028]);
 
 /**
  * SPEC 1.4's control-character class, exactly: U+0000–U+001F and U+007F. The
@@ -534,7 +545,16 @@ function valueViolation(value, role) {
     if (character === "#") {
       return `the ${role} contains "#" (SPEC 1.4)`;
     }
-    if (isValidityWhitespace(codePoint)) {
+    // §VIOL-VALID-WIDE (bin-wide.mjs): under `widenValidityWhitespace` the
+    // boundary code points U+00A0/U+0085/U+2028 are treated as whitespace for
+    // 1.4 validity — segments and tags containing them are rejected with 14.4.
+    // Validity classification only: `splitTags` below stays on the literal
+    // 1.4 whitespace class, and every other classification is unchanged.
+    if (
+      isValidityWhitespace(codePoint) ||
+      (deviations.widenValidityWhitespace &&
+        WIDE_BOUNDARY_CODE_POINTS.has(codePoint))
+    ) {
       return `the ${role} contains the whitespace character ${codePointName(codePoint)} (SPEC 1.4)`;
     }
     // §VIOL-VALID-CTRL (bin-ctrl.mjs): under `acceptNonWhitespaceControls`
@@ -1136,7 +1156,10 @@ async function commandQuery(io, cwd, argv) {
  *   - `acceptNonWhitespaceControls` (§VIOL-VALID-CTRL, bin-ctrl.mjs):
  *     consumed in `valueViolation` — non-whitespace control characters are
  *     accepted in segments and tags.
- * CERT-10 (WIDE) adds its switch and consumption when it lands.
+ *   - `widenValidityWhitespace` (§VIOL-VALID-WIDE, bin-wide.mjs): consumed
+ *     in `valueViolation` — U+00A0, U+0085, and U+2028 are treated as
+ *     whitespace for 1.4 validity, so segments and tags containing them are
+ *     rejected with 14.4; tag splitting is unchanged.
  */
 let deviations = {};
 

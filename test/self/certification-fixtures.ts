@@ -224,3 +224,23 @@ export const VIOL_VALID_CTRL_CERTIFIES: readonly string[] = [
   "T1.4-4",
   "P-1",
 ];
+
+/**
+ * VIOL-VALID-WIDE (CERTIFICATIONS.md §VIOL-VALID-WIDE): the CONF-VALID
+ * conformer, except U+00A0, U+0085, and U+2028 are treated as whitespace for
+ * SPEC 1.4 validity — a segment or tag containing any of them is rejected
+ * with 14.4. Tag splitting and all other classifications are unchanged.
+ */
+export function violValidWideBinding(): ProductBinding {
+  return nodeFixtureBinding(
+    "VIOL-VALID-WIDE violator",
+    "conf-valid/bin-wide.mjs",
+  );
+}
+
+/** The tests §VIOL-VALID-WIDE certifies, verbatim from CERTIFICATIONS.md. */
+export const VIOL_VALID_WIDE_CERTIFIES: readonly string[] = [
+  "T1.4-2",
+  "T1.4-4",
+  "P-1",
+];
