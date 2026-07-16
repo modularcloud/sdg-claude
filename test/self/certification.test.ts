@@ -21,8 +21,10 @@ import type { ProductBinding } from "../helpers/subprocess.js";
 import { productTestSuite } from "../suite/registry/index.js";
 import {
   CONF_CORE_IN_SCOPE,
+  CONF_MD_IN_SCOPE,
   CONF_VALID_IN_SCOPE,
   confCoreBinding,
+  confMdBinding,
   confValidBinding,
   VIOL_CORE_CHATTYREADS_CERTIFIES,
   violCoreChattyreadsBinding,
@@ -238,5 +240,13 @@ test(
       CONF_VALID_IN_SCOPE,
       VIOL_VALID_WIDE_CERTIFIES,
     );
+  },
+);
+
+test(
+  "CONF-MD conformer: every CERTIFICATIONS.md in-scope test passes against the fixture (C-1)",
+  { timeout: RUN_TIMEOUT_MS },
+  async () => {
+    await verifyConformerAllPass(confMdBinding(), CONF_MD_IN_SCOPE);
   },
 );

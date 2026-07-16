@@ -244,3 +244,27 @@ export const VIOL_VALID_WIDE_CERTIFIES: readonly string[] = [
   "T1.4-4",
   "P-1",
 ];
+
+/**
+ * CONF-MD (CERTIFICATIONS.md §CONF-MD): Markdown compilation — `build` with
+ * byte-exact Markdown output per SPEC 3 (removal, replacement, the line-drop
+ * rule, line terminators), `query node` reporting own and subtree text
+ * (SPEC 1.6), and the emission scope of SPEC 7.3, over spec-group workspaces
+ * with imports, embeddings, comments, mixed line terminators, and the full
+ * 2.7 prop set.
+ */
+export function confMdBinding(): ProductBinding {
+  return nodeFixtureBinding("CONF-MD conformer", "conf-md/bin.mjs");
+}
+
+/** §CONF-MD's in-scope tests, verbatim from CERTIFICATIONS.md. */
+export const CONF_MD_IN_SCOPE: readonly string[] = [
+  "T3-1",
+  "T3-2",
+  "T3-3",
+  "T3-4",
+  "T3-5",
+  "T3-6",
+  "P-2",
+  "P-3",
+];
