@@ -331,3 +331,22 @@ export function violDiscDialectBinding(): ProductBinding {
 
 /** The tests §VIOL-DISC-DIALECT certifies, verbatim from CERTIFICATIONS.md. */
 export const VIOL_DISC_DIALECT_CERTIFIES: readonly string[] = ["T7-4"];
+
+/**
+ * VIOL-DISC-SYMLINK (CERTIFICATIONS.md §VIOL-DISC-SYMLINK): the CONF-DISC
+ * conformer, except discovery follows symbolic links to existing files — a
+ * symbolic link to an existing file, at a workspace-relative path a
+ * spec-group glob matches, is discovered as a source (read through the
+ * link). Broken links remain ignored, and symbolic links to directories
+ * remain untraversed, so discovery still terminates (T7-5 fails by
+ * assertion, not by hang).
+ */
+export function violDiscSymlinkBinding(): ProductBinding {
+  return nodeFixtureBinding(
+    "VIOL-DISC-SYMLINK violator",
+    "conf-disc/bin-symlink.mjs",
+  );
+}
+
+/** The tests §VIOL-DISC-SYMLINK certifies, verbatim from CERTIFICATIONS.md. */
+export const VIOL_DISC_SYMLINK_CERTIFIES: readonly string[] = ["T7-5"];

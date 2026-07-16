@@ -42,6 +42,8 @@ import {
   violCoreStalelockBinding,
   VIOL_DISC_DIALECT_CERTIFIES,
   violDiscDialectBinding,
+  VIOL_DISC_SYMLINK_CERTIFIES,
+  violDiscSymlinkBinding,
   VIOL_MD_CLASS_CERTIFIES,
   violMdClassBinding,
   VIOL_MD_CR_CERTIFIES,
@@ -299,6 +301,18 @@ test(
       violDiscDialectBinding(),
       CONF_DISC_IN_SCOPE,
       VIOL_DISC_DIALECT_CERTIFIES,
+    );
+  },
+);
+
+test(
+  "VIOL-DISC-SYMLINK violator: exactly T7-5 fails, every other §CONF-DISC in-scope test passes (C-1)",
+  { timeout: RUN_TIMEOUT_MS },
+  async () => {
+    await verifyViolatorExpectedFailures(
+      violDiscSymlinkBinding(),
+      CONF_DISC_IN_SCOPE,
+      VIOL_DISC_SYMLINK_CERTIFIES,
     );
   },
 );

@@ -907,7 +907,23 @@ async function walkPlainFiles(rootAbs, relPrefix = "") {
   }
   for (const entry of entries) {
     const rel = relPrefix === "" ? entry.name : `${relPrefix}/${entry.name}`;
-    if (entry.isSymbolicLink()) continue; // never discovered, never traversed
+    if (entry.isSymbolicLink()) {
+      // Conformer: never discovered, never traversed (SPEC 7). Under
+      // §VIOL-DISC-SYMLINK's `followFileSymlinks` (CERT-16), a link resolving
+      // to an existing regular file is discovered (read later through the
+      // link); a broken or unresolvable link stays ignored and a directory
+      // link stays untraversed, so the walk still terminates.
+      if (deviations.followFileSymlinks) {
+        let resolved;
+        try {
+          resolved = await fsp.stat(path.join(rootAbs, rel));
+        } catch {
+          continue; // broken link (or pure link cycle, ELOOP): ignored
+        }
+        if (resolved.isFile()) files.push(rel);
+      }
+      continue;
+    }
     if (entry.isDirectory()) {
       files.push(...(await walkPlainFiles(rootAbs, rel)));
     } else if (entry.isFile()) {
