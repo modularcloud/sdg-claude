@@ -297,3 +297,18 @@ export function violMdCrBinding(): ProductBinding {
 
 /** The tests §VIOL-MD-CR certifies, verbatim from CERTIFICATIONS.md. */
 export const VIOL_MD_CR_CERTIFIES: readonly string[] = ["T3-4", "P-2"];
+
+/**
+ * CONF-DISC (CERTIFICATIONS.md §CONF-DISC): configuration-driven discovery —
+ * `build` and `ids` as the observation of the discovered set, over the glob
+ * semantics of SPEC 7 (byte-wise case-sensitive matching, the dot-segment
+ * rule, every character outside `*`/`?`/`**` a literal), discovery's refusal
+ * to follow symbolic links, and the source exclusion of SPEC 13.4, with
+ * 14.14 for outside-root patterns and 14.15 for import errors.
+ */
+export function confDiscBinding(): ProductBinding {
+  return nodeFixtureBinding("CONF-DISC conformer", "conf-disc/bin.mjs");
+}
+
+/** §CONF-DISC's in-scope tests, verbatim from CERTIFICATIONS.md. */
+export const CONF_DISC_IN_SCOPE: readonly string[] = ["T7-4", "T7-5", "T7-6"];
