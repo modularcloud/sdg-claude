@@ -302,11 +302,14 @@ export const genP10Trial: Gen<P10Trial> = (choices) => {
         straddleReads,
       };
     }
-    // Even weights for `move` (few move episodes occur per trial set, so an
-    // uneven split left held-killed moves uncovered on the fixed seeds).
+    // heldKill-leaning weights for `move` (only a handful of move episodes
+    // occur across the fixed trial set, and flatter splits left held-killed
+    // moves uncovered on the fixed seeds — weights shape random-mode
+    // distribution only, never replay, so shrinking still prefers the
+    // first-listed `complete`).
     const fate = choices.weightedPick<"complete" | "heldKill">([
       [kind === "move" ? 2 : 3, "complete"],
-      [2, "heldKill"],
+      [kind === "move" ? 3 : 2, "heldKill"],
     ]);
     if (kind === "rename") {
       const index = choices.intInclusive(0, topIds.length - 1);
@@ -314,7 +317,15 @@ export const genP10Trial: Gen<P10Trial> = (choices) => {
       const newId = `r${String(fresh)}`;
       fresh += 1;
       if (fate === "complete") topIds[index] = newId;
-      return { kind, fate, file: filePath, oldId, newId, heldReads, straddleReads };
+      return {
+        kind,
+        fate,
+        file: filePath,
+        oldId,
+        newId,
+        heldReads,
+        straddleReads,
+      };
     }
     const from = filePath;
     const to = `specs/M${String(fresh)}.mdx`;
@@ -336,7 +347,8 @@ export const genP10Trial: Gen<P10Trial> = (choices) => {
 function describeReads(episode: P10Episode): string {
   const names = (indices: readonly number[]): string =>
     indices.map((i) => READ_MENU[i].what).join(", ");
-  const held = episode.heldReads.length > 0 ? ` held:[${names(episode.heldReads)}]` : "";
+  const held =
+    episode.heldReads.length > 0 ? ` held:[${names(episode.heldReads)}]` : "";
   const straddle =
     episode.straddleReads.length > 0
       ? ` straddle:[${names(episode.straddleReads)}]`
@@ -861,11 +873,7 @@ async function runEpisode(
     workspace.tempRoot,
     `hold-${String(episodeIndex)}.tmp`,
   );
-  const argv = [
-    ...mutatorArgv(episode, resolveTargetId),
-    "--test-hold",
-    hold,
-  ];
+  const argv = [...mutatorArgv(episode, resolveTargetId), "--test-hold", hold];
   const running = await startProduct(product, {
     cwd: workspace.root,
     argv,
@@ -1238,7 +1246,9 @@ async function runP10Trial(
             if (
               nearest === undefined ||
               nearest.kind !== "content" ||
-              Math.abs(candidate.bytes.length - observation.state.bytes.length) <
+              Math.abs(
+                candidate.bytes.length - observation.state.bytes.length,
+              ) <
                 Math.abs(nearest.bytes.length - observation.state.bytes.length)
             ) {
               nearest = candidate;

@@ -17,12 +17,6 @@ Planned 2026-07-10 from the Phase 9 iteration-1 compliance panel (TEST-SPEC.md a
 
 ---
 
-## C. Property-based and fuzz tests (`test/suite/`) — expected red against the stub
-
-Each task implements exactly the named TEST-SPEC.md tests, to their full text. Default verification per Conventions.
-
-- [ ] **PROP-08 — P-10 concurrency.** Randomized schedules of concurrent readers plus one mutating command (via `--test-hold` and kills): readers observe only prior-or-complete states; post-hoc journal-line and session-status accounting loses nothing. Cites §16 P-10. Uses HARNESS-02 choreography.
-
 ## D. Certification fixtures and the certification run (`test/fixtures/` + `test/self/`)
 
 Fixtures are harness-owned executable products driven only through the C-2 executable/workspace binding; they never import product code. Each conformer implements its entry's **Scope** with the simplest conforming behavior; each violator is its conformer plus exactly its one **Deviation** (sharing conformer code internally is fine — the deviation must be the only behavioral difference). Fixture executables must be invocable in CI without network; if a build step is added, record it in `AGENTS.md`. Verification per fixture task = a certification-runner invocation of the fixture's in-scope tests (so the in-scope suite/prop tasks must land first; conformer tasks list them).
