@@ -91,3 +91,22 @@ export const VIOL_CORE_EARLYWRITE_CERTIFIES: readonly string[] = [
   "T13.5-1",
   "T13.5-4",
 ];
+
+/**
+ * VIOL-CORE-STALELOCK (CERTIFICATIONS.md §VIOL-CORE-STALELOCK): the
+ * CONF-CORE conformer, except workspace exclusivity is not released by
+ * abnormal termination — after a mutating command's process is killed, every
+ * later mutating command in that workspace is refused with the usage error
+ * of SPEC 13.5/12.0. Normal completion still releases.
+ */
+export function violCoreStalelockBinding(): ProductBinding {
+  return nodeFixtureBinding(
+    "VIOL-CORE-STALELOCK violator",
+    "conf-core/bin-stalelock.mjs",
+  );
+}
+
+/**
+ * The tests §VIOL-CORE-STALELOCK certifies, verbatim from CERTIFICATIONS.md.
+ */
+export const VIOL_CORE_STALELOCK_CERTIFIES: readonly string[] = ["T13.5-3"];

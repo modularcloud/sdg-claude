@@ -1183,6 +1183,21 @@ async function acquireExclusivity(root) {
       };
     } catch (error) {
       if (error.code !== "EEXIST") throw error;
+      if (deviations.staleLockBlocks) {
+        // VIOL-CORE-STALELOCK (CERTIFICATIONS.md): workspace exclusivity is
+        // not released by abnormal termination — an existing lock file
+        // refuses the command outright, with no holder-liveness detection
+        // and no stale-lock cleanup, so after a mutating command's process
+        // is killed every later mutating command in that workspace is
+        // refused with the usage error of 13.5/12.0. Normal completion
+        // still releases (the completing command unlinks the lock file in
+        // release(), unchanged), so only a killed holder leaves this
+        // refusing state behind; everything else is exactly the conformer's
+        // behavior.
+        throw new UsageError(
+          "another mutating command is running in this workspace (SPEC 13.5, 12.0)",
+        );
+      }
       let holder = Number.NaN;
       try {
         holder = Number.parseInt(await fsp.readFile(lockPath, "utf8"), 10);
@@ -2804,6 +2819,9 @@ async function commandReview(io, cwd, argv) {
  * - `writesBeforeHold` (VIOL-CORE-EARLYWRITE): a mutating command performs
  *   its workspace modifications before creating the hold file; see
  *   runMutating.
+ * - `staleLockBlocks` (VIOL-CORE-STALELOCK): workspace exclusivity is not
+ *   released by abnormal termination — a lock file left by a killed holder
+ *   refuses every later mutating command; see acquireExclusivity.
  */
 let deviations = {};
 
