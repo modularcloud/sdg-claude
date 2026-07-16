@@ -176,3 +176,29 @@ export function violCorePersistreadsBinding(): ProductBinding {
  * CERTIFICATIONS.md.
  */
 export const VIOL_CORE_PERSISTREADS_CERTIFIES: readonly string[] = ["T10.4-5"];
+
+/**
+ * CONF-VALID (CERTIFICATIONS.md §CONF-VALID): segment and tag validity —
+ * `build` with the 14.1–14.4 error reporting and `query node`/`query nodes`
+ * reporting identity, tags, and metadataHash, over `.mdx` workspaces whose
+ * sections carry `id`/`tags` props.
+ */
+export function confValidBinding(): ProductBinding {
+  return nodeFixtureBinding("CONF-VALID conformer", "conf-valid/bin.mjs");
+}
+
+/** §CONF-VALID's in-scope tests, verbatim from CERTIFICATIONS.md. */
+export const CONF_VALID_IN_SCOPE: readonly string[] = [
+  "T1.3-1",
+  "T1.3-2",
+  "T1.3-3",
+  "T1.3-4",
+  "T1.3-5",
+  "T1.3-6",
+  "T1.4-1",
+  "T1.4-2",
+  "T1.4-4",
+  "T2.6-1",
+  "T2.6-2",
+  "P-1",
+];

@@ -21,7 +21,9 @@ import type { ProductBinding } from "../helpers/subprocess.js";
 import { productTestSuite } from "../suite/registry/index.js";
 import {
   CONF_CORE_IN_SCOPE,
+  CONF_VALID_IN_SCOPE,
   confCoreBinding,
+  confValidBinding,
   VIOL_CORE_CHATTYREADS_CERTIFIES,
   violCoreChattyreadsBinding,
   VIOL_CORE_EARLYWRITE_CERTIFIES,
@@ -46,6 +48,29 @@ import {
 // many fixture subprocesses. A hang guard only, never an assertion input
 // (H-10); the runner's per-test watchdogs bound each body individually.
 const RUN_TIMEOUT_MS = 600_000;
+
+/**
+ * Verify one conformer (CERTIFICATIONS.md preamble): run its in-scope tests
+ * against its binding and require that every one passes (C-1).
+ */
+async function verifyConformerAllPass(
+  binding: ProductBinding,
+  inScope: readonly string[],
+): Promise<void> {
+  const report = await runProductTests(
+    binding,
+    productTestSuite.select(inScope),
+  );
+  // Direct stdout keeps the per-fixture, per-test report visible in the
+  // harness-self CI job output (C-1) — Vitest's console interception hides
+  // console.* lines from passing tests under the default reporter.
+  const rendered = renderFixtureReport(report);
+  process.stdout.write(`${rendered}\n`);
+  expect(
+    report.results.filter((result) => result.outcome !== "pass"),
+    `every in-scope test must pass against ${binding.label} (C-1)\n${rendered}`,
+  ).toEqual([]);
+}
 
 /**
  * Verify one violator's expected-failure contract (CERTIFICATIONS.md
@@ -104,19 +129,7 @@ test(
   "CONF-CORE conformer: every CERTIFICATIONS.md in-scope test passes against the fixture (C-1)",
   { timeout: RUN_TIMEOUT_MS },
   async () => {
-    const report = await runProductTests(
-      confCoreBinding(),
-      productTestSuite.select(CONF_CORE_IN_SCOPE),
-    );
-    // Direct stdout keeps the per-fixture, per-test report visible in the
-    // harness-self CI job output (C-1) — Vitest's console interception
-    // hides console.* lines from passing tests under the default reporter.
-    const rendered = renderFixtureReport(report);
-    process.stdout.write(`${rendered}\n`);
-    expect(
-      report.results.filter((result) => result.outcome !== "pass"),
-      `every §CONF-CORE in-scope test must pass against the conformer (C-1)\n${rendered}`,
-    ).toEqual([]);
+    await verifyConformerAllPass(confCoreBinding(), CONF_CORE_IN_SCOPE);
   },
 );
 
@@ -189,5 +202,13 @@ test(
       CONF_CORE_IN_SCOPE,
       VIOL_CORE_PERSISTREADS_CERTIFIES,
     );
+  },
+);
+
+test(
+  "CONF-VALID conformer: every CERTIFICATIONS.md in-scope test passes against the fixture (C-1)",
+  { timeout: RUN_TIMEOUT_MS },
+  async () => {
+    await verifyConformerAllPass(confValidBinding(), CONF_VALID_IN_SCOPE);
   },
 );
