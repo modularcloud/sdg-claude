@@ -44,24 +44,6 @@ signature. The entire pipeline must be built; tasks below are dependency-ordered
 
 ## Tasks
 
-- [ ] **T3 — CLI entry, argument parsing, dispatch, exit taxonomy; retire the stub.**
-  Replace the Phase 8 stub: `src/cli/` gets the entry `(argv, cwd, stdout, stderr) → exit
-  code` with `src/cli/bin.ts` a trivial wrapper (IMPLEMENTATION Architecture). Implement
-  SPEC 12.0 conventions mechanically: known command table (`build`, `check`, `ids`, `show`,
-  `coverage`, `impact`, `review`, `query`, `rename`, `move` — SPEC 12.5); unknown commands/
-  flags, missing required flags/arguments, invalid flag values → usage error, exit 2,
-  diagnostic on stderr; a flag at most once per invocation (repetition = usage error);
-  list-valued flags take one comma-separated value; argument values interpreted as UTF-8
-  with non-UTF-8 a usage error; global `--json` (single JSON document as the entire stdout;
-  empty stdout when an exit-2 error prevents emitting one) and `--config <path>` (resolved
-  against the working directory) accepted by every command; reports on stdout, diagnostics
-  on stderr; exit codes only 0/1/2 per the SPEC 12.0 partition. Commands whose behavior is
-  not yet built exit 2 with an explicit "not implemented" stderr diagnostic (temporary
-  scaffolding; removed as later tasks land). Satisfies Finding 2 gaps 1 and 16 (mechanical
-  layer; sweep in T36).
-  Verify: build, then `node dist/cli/bin.js nonsense` exits 2 with stderr text and empty
-  stdout; no invocation exits 86 anymore. section-12.0-i/ii move.
-
 - [ ] **T4 — configuration: locate, statically parse, validate; export `defineConfig`.**
   In `src/workspace/` + `src/core/`: locate `xspec.config.ts` by upward search from the
   working directory or take `--config` (SPEC 7); parse with the TypeScript compiler API as
