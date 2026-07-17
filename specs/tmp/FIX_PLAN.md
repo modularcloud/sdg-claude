@@ -44,20 +44,6 @@ signature. The entire pipeline must be built; tasks below are dependency-ordered
 
 ## Tasks
 
-- [ ] **T11 — journal model and canonical identities.**
-  In `src/core/` (format+walk) and `src/workspace/` (file I/O): the journal at
-  `.xspec/journal` — plain-text, line-oriented, append-only, one self-contained entry per
-  rename/move operation, byte-deterministic for a given operation and workspace state,
-  absent file = empty journal (SPEC 6.1). Design the entry format (content otherwise opaque
-  per 6.1 — the observable contract is the line form and its effects). Parse/validate:
-  malformed, conflicting, or unreplayable entries and a journal path occupied by a non-plain
-  file → 14.13 (naming lines). Canonical identity (SPEC 5.4): backward walk from the newest
-  entry tracking the current identity — mapping-to extends the chain, mapping-away ends it;
-  result = (identity, journal position), position = journal start when nothing ends the
-  walk; reintroduced identities start new chains so distinct nodes never hash alike.
-  Satisfies Finding 1 gaps 5 (5.4) and 6 (6.1).
-  Verify: typecheck; section-6.1, 5.4 move once rename (T26) and impact (T24) exist.
-
 - [ ] **T12 — the four hashes.**
   In `src/core/` over T8/T10/T11 outputs (SPEC 5.5, framing from T1): ownHash — own content
   sequence, all runs including empty, each referenced node entering as its canonical

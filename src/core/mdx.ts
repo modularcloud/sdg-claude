@@ -51,6 +51,7 @@ import { decodeSourceBytes } from "./source-text.js";
 import {
   containsControl,
   containsWhitespace,
+  FORBIDDEN_SEGMENT_NAMES,
   isWhitespaceCodePoint,
 } from "./text.js";
 
@@ -1024,15 +1025,6 @@ function pointRange(
 // Segment and tag validity (SPEC 1.4)
 // ---------------------------------------------------------------------------
 
-/** SPEC 1.4: the five forbidden segment (and tag) names. */
-const FORBIDDEN_NAMES: ReadonlySet<string> = new Set([
-  "$",
-  "__proto__",
-  "prototype",
-  "constructor",
-  "then",
-]);
-
 /**
  * Why `value` violates SPEC 1.4 as an ID segment or a tag (`"."` allowed in
  * tags only), or null when valid. Segments arrive from splitting an ID on
@@ -1042,7 +1034,7 @@ function valueViolation(value: string, kind: "segment" | "tag"): string | null {
   if (value.length === 0) {
     return "it is empty (SPEC 1.4: segments are non-empty)";
   }
-  if (FORBIDDEN_NAMES.has(value)) {
+  if (FORBIDDEN_SEGMENT_NAMES.has(value)) {
     return `${JSON.stringify(value)} is a forbidden name (SPEC 1.4)`;
   }
   if (kind === "segment" && value.includes(".")) {

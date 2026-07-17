@@ -60,6 +60,18 @@ export function containsControl(text: string): boolean {
   return false;
 }
 
+/**
+ * SPEC 1.4: the five forbidden segment (and tag) names. Shared by MDX prop
+ * validation (mdx.ts) and journal-entry validation (journal.ts).
+ */
+export const FORBIDDEN_SEGMENT_NAMES: ReadonlySet<string> = new Set([
+  "$",
+  "__proto__",
+  "prototype",
+  "constructor",
+  "then",
+]);
+
 /** A SPEC 3 line terminator: CRLF (one terminator), lone LF, or lone CR. */
 export type LineTerminator = "\r\n" | "\n" | "\r";
 

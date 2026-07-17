@@ -30,7 +30,42 @@ export function canonicalJson(value: JsonValue): string {
   return render(value, "") + "\n";
 }
 
-function render(value: JsonValue, indent: string): string {
+/**
+ * Serializes `value` to compact canonical JSON: the same deterministic
+ * rendering as `canonicalJson` — object keys sorted byte-wise, array elements
+ * in given order — but with no whitespace and no trailing newline, so one
+ * value occupies exactly one line. This is the line encoding of the
+ * line-oriented journal (SPEC 6.1): JSON string escaping keeps every value on
+ * a single line whatever characters it contains.
+ */
+export function compactJson(value: JsonValue): string {
+  const primitive = renderPrimitive(value);
+  if (primitive !== null) {
+    return primitive;
+  }
+  const composite = value as readonly JsonValue[] | JsonObject;
+  if (isJsonArray(composite)) {
+    const items = composite.map((element) => {
+      if (element === undefined) {
+        throw new TypeError("undefined array element in canonical JSON");
+      }
+      return compactJson(element);
+    });
+    return "[" + items.join(",") + "]";
+  }
+  const entries: string[] = [];
+  for (const key of Object.keys(composite).sort(compareBytes)) {
+    const propertyValue = composite[key];
+    if (propertyValue === undefined) {
+      continue;
+    }
+    entries.push(JSON.stringify(key) + ":" + compactJson(propertyValue));
+  }
+  return "{" + entries.join(",") + "}";
+}
+
+/** The rendering of a primitive value, or null for arrays and objects. */
+function renderPrimitive(value: JsonValue): string | null {
   if (value === null) {
     return "null";
   }
@@ -49,12 +84,22 @@ function render(value: JsonValue, indent: string): string {
     // JSON.stringify string quoting is fully specified by ECMAScript.
     return JSON.stringify(value);
   }
+  return null;
+}
+
+function render(value: JsonValue, indent: string): string {
+  const primitive = renderPrimitive(value);
+  if (primitive !== null) {
+    return primitive;
+  }
+  // renderPrimitive returned null, so `value` is an array or an object.
+  const composite = value as readonly JsonValue[] | JsonObject;
   const inner = indent + "  ";
-  if (isJsonArray(value)) {
-    if (value.length === 0) {
+  if (isJsonArray(composite)) {
+    if (composite.length === 0) {
       return "[]";
     }
-    const items = value.map((element) => {
+    const items = composite.map((element) => {
       if (element === undefined) {
         throw new TypeError("undefined array element in canonical JSON");
       }
@@ -62,7 +107,7 @@ function render(value: JsonValue, indent: string): string {
     });
     return "[\n" + items.join(",\n") + "\n" + indent + "]";
   }
-  const object: JsonObject = value;
+  const object: JsonObject = composite;
   const entries: string[] = [];
   for (const key of Object.keys(object).sort(compareBytes)) {
     const propertyValue = object[key];
