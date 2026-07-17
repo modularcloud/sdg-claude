@@ -44,26 +44,6 @@ signature. The entire pipeline must be built; tasks below are dependency-ordered
 
 ## Tasks
 
-- [ ] **T4 — configuration: locate, statically parse, validate; export `defineConfig`.**
-  In `src/workspace/` + `src/core/`: locate `xspec.config.ts` by upward search from the
-  working directory or take `--config` (SPEC 7); parse with the TypeScript compiler API as
-  an AST reduced to data — never executed or imported (IMPLEMENTATION); enforce the exact
-  declarative form (SPEC 7: exactly one import of `defineConfig` from `"xspec"`, optionally
-  aliased, and a default export of one call to it whose sole argument is statically literal
-  — object literals with identifier/string keys, array literals, static string literals per
-  2.4, `true`/`false`; nothing else). Validate the full schema: `specs` required; `code`,
-  `markdown` (`emit` required boolean, `outDir` inside the root — SPEC 7.3), `coverage`
-  (SPEC 7.4 fields incl. `boundaryKind` inference/ambiguity, `targets` default `"leaves"`,
-  `edgeKinds` subset, empty-list errors), `policy` (SPEC 7.5 fields, selector exactly-one-of
-  `group`/`files`/`tags`, `kind` inference, capture violations) optional; unknown keys
-  anywhere, wrong-kind/unknown group references, globs resolving outside root → configuration
-  error 14.14, reported by every command at load as a usage error (exit 2) preceding all
-  source analysis. Make `src/index.ts` export `defineConfig` (identity-shaped, typed) so
-  `import { defineConfig } from "xspec"` resolves (SPEC 7; IMPLEMENTATION Distribution;
-  Finding 1 gap 7's missing-export observation).
-  Verify: probe manually: `xspec build` in a dir with no config exits 2 with stderr
-  diagnostic; with a malformed config exits 2. section-7-basics moves.
-
 - [ ] **T5 — source discovery: symlink-free walk, group matching, exclusions.**
   In `src/workspace/`: directory walking that never follows symbolic links — a symlink (to
   file or directory, broken or not) is never discovered and never traversed (SPEC 7); apply

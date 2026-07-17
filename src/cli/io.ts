@@ -15,6 +15,8 @@ export interface CliWriter {
   write(chunk: string): unknown;
 }
 
+import type { LoadedWorkspace } from "../workspace/config.js";
+
 /** Per-invocation context handed to command handlers. */
 export interface CommandContext {
   /**
@@ -24,6 +26,12 @@ export interface CommandContext {
    * independent of it (SPEC 12.0).
    */
   readonly cwd: string;
+  /**
+   * The loaded workspace: root directory and validated configuration.
+   * Every command loads it before running — a missing or invalid
+   * configuration exits 2 before any handler is reached (SPEC 7, 14.14).
+   */
+  readonly workspace: LoadedWorkspace;
   /** SPEC 12.0: the report — findings included — is standard-output content. */
   readonly stdout: CliWriter;
   /**

@@ -7,7 +7,9 @@
 // standard-output content, usage and configuration error messages and all
 // other diagnostic text standard-error content.
 
-import type { ExitCode } from "../core/findings.js";
+import type { ExitCode, Finding } from "../core/findings.js";
+import { conditionName } from "../core/findings.js";
+import { loadWorkspace } from "../workspace/config.js";
 import type { Invocation } from "./args.js";
 import { COMMAND_PATHS, parseArgv } from "./args.js";
 import type { CliWriter, CommandContext } from "./io.js";
@@ -40,6 +42,21 @@ const HANDLERS: ReadonlyMap<string, CommandHandler> = new Map(
 );
 
 /**
+ * SPEC 12.0/14.14: render one configuration-error finding as a diagnostic
+ * line. Configuration errors are usage errors: the message is
+ * standard-error content, and standard output stays empty.
+ */
+function renderConfigurationError(finding: Finding): string {
+  const location =
+    finding.file === undefined
+      ? ""
+      : finding.line === undefined
+        ? `${finding.file}: `
+        : `${finding.file}:${String(finding.line)}: `;
+  return `xspec: ${conditionName(finding.condition)}: ${location}${finding.message}\n`;
+}
+
+/**
  * The CLI entry: parse per SPEC 12.0, dispatch per SPEC 12.5, return the
  * exit code. All output goes through the given writers; the working
  * directory arrives as data — the entry reads no `process` globals.
@@ -67,5 +84,23 @@ export async function main(
       `no handler registered for command '${result.invocation.command}'`,
     );
   }
-  return handler(result.invocation, { cwd, stdout, stderr });
+  // SPEC 7/14.14: every command locates and loads the configuration —
+  // upward search from the working directory, or the `--config <path>`
+  // value resolved against it (12.0). A missing or invalid configuration
+  // is a configuration error, reported as a usage error (exit 2) preceding
+  // all source analysis; with `--json`, the exit-2 error prevents emitting
+  // the single JSON document, so standard output stays empty (12.0).
+  const loaded = await loadWorkspace(cwd, result.invocation.config);
+  if (!loaded.ok) {
+    for (const finding of loaded.findings) {
+      stderr.write(renderConfigurationError(finding));
+    }
+    return 2;
+  }
+  return handler(result.invocation, {
+    cwd,
+    workspace: loaded.workspace,
+    stdout,
+    stderr,
+  });
 }
