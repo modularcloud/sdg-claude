@@ -44,23 +44,37 @@ signature. The entire pipeline must be built; tasks below are dependency-ordered
 
 ## Tasks
 
-- [ ] **T8 — text model: Markdown compilation, own/subtree text, own content.**
-  In `src/core/`, pure functions over T6/T7 models across files: SPEC 3 compilation —
-  remove imports, section tags with their props, MDX comments; replace each `text(...)`
-  with the target's fully expanded compiled subtree text; preserve all other content and
-  author whitespace; exact in-place character deletion; the line-drop rule (a line with
-  source non-whitespace left empty/whitespace-only purely by removals or by an
-  empty-expansion replacement is dropped with its terminator) under the SPEC 3
-  line-terminator definition. From the same rules derive per node (SPEC 1.6): subtree text
-  (child contributions interleaved in document order); own text (child contributions
-  excised, N constructs → exactly N+1 runs, empty runs counted); own content sequence
-  (`text(...)` replacement suspended — each embedding excised as a reference marking an
-  excision point, counting as remaining line content so the empty-expansion drop never
-  applies; runs alternating with child/embedding references, the two kinds distinguished).
-  All values exact bytes, fully expanded where 1.6 says so. Satisfies Finding 1 gaps 1
-  (1.6) and 3.
-  Verify: typecheck; section-3 and section-1.6-1.7 move after T17; text values observed via
-  `query`/`show` after T19/T20.
+- [ ] **T8a — widen the MDX grammar for certified fixture shapes stock remark-mdx rejects.**
+  Two committed suite fixture shapes are valid xspec sources per the certified suite but
+  `src/core/mdx.ts` (stock remark-mdx behavior, verified against stock in this spawn)
+  reports them 14.20-unparseable: (a) a spec-module import line directly followed by a
+  non-blank line — micromark-extension-mdxjs-esm requires a blank line or EOF after the
+  ESM block, so it feeds `import …\nK1 after-import` whole to acorn and fails (section-3
+  T3-3 `DROP_SOURCE` lines 1–2); (b) an `<S>`/`<Spec>` opening tag with trailing content
+  on its line whose closing tag sits on a later line — the flow-JSX attempt fails, the
+  element re-parses as text JSX inside a paragraph, and the paragraph ends before the
+  closing tag ("Expected a closing tag for `<S>` … before the end of `paragraph`";
+  section-3 T3-1 `gamma`, and section-6.5's X2 "mid-line insertion point" expected
+  post-move workspace `'<S id="c">Gamma holder.' …`). The conformer documents both
+  deliberately (test/fixtures/conf-md/product.mjs header: "shapes remark-mdx cannot
+  parse") — the certified suite requires them to build with exit 0, so SPEC 14.20's
+  "well-formed MDX" includes them. Extend the parse pipeline in `src/core/mdx.ts` the way
+  T6 widened acorn — surgical, documented grammar widenings preserving exact source
+  offsets ("remark-mdx's grammar, so extended, defines well-formed MDX"; IMPLEMENTATION
+  Key libraries stays the toolchain) — e.g. end the ESM block at the first line boundary
+  where the accumulated text is a complete valid program, and let a section element opened
+  with trailing same-line content close on a later line. While there, check content
+  directly preceding a closing tag on its line (`Tail</S>` closing an element opened
+  earlier — also rejected today; the conformer's lexer accepts it and section-16
+  generators may produce it). Do not regress: genuinely malformed sources (unclosed
+  elements, e.g. section-14's `specs/broken.mdx`; bad expressions) must stay 14.20.
+  Everything else in those fixtures parses today — verified: `<S id="p"><S id="p.a">`
+  flow nesting, `</S></S>` closing lines, adjacent import lines, balanced in-line tags
+  all parse.
+  Verify: typecheck; parse probes — T3-1 `REMOVALS_SOURCE` and T3-3 `DROP_SOURCE` yield
+  documents whose compiled output (T8 text model, `src/core/text-model.ts`) equals the
+  tests' hand-derived `REMOVALS_COMPILED`/`DROP_COMPILED` bytes; section-3 moves after
+  T17.
 
 - [ ] **T9 — TypeScript source analysis: imports, markers, text calls, code units.**
   In `src/core/` via the TypeScript compiler API: parse code-group files (`.tsx` as TSX,
