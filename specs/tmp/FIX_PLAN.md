@@ -44,23 +44,6 @@ signature. The entire pipeline must be built; tasks below are dependency-ordered
 
 ## Tasks
 
-- [ ] **T14 — generated modules: documentation comments and navigation.**
-  Extend T13 emission (SPEC 4.2): every generated node carries a documentation comment with
-  the node's own text truncated to its first 1000 Unicode code points, `…` appended when
-  truncated, each `*/` in emitted text written `*\/`, so editors show hover documentation;
-  go-to-definition on a node reference resolves into the source `.mdx` — non-root to its
-  `<S>` section, root to file start (design: declaration mapping the language service
-  honors; the harness asserts via the TS language-service API, IMPLEMENTATION "Test
-  harness"). Satisfies Finding 1 gap 4 (4.2).
-  T13 landed the architecture in `src/core/emission.ts` (rationale in its module header):
-  `NAME.xspec.ts` is a re-export shell, the runtime is `NAME.xspec.impl.js`, and every
-  navigable declaration lives in `NAME.xspec.impl.d.ts` — put the JSDoc doc comments on
-  those `.d.ts` declarations (hover + definitions), duplicate them textually in the
-  `NAME.xspec.ts` shell (the certified doc-comment scan reads that file), and emit
-  `NAME.xspec.impl.d.ts.map` + `sourceMappingURL` so the language service's source mapper
-  redirects definitions into the `.mdx` (mapping works only from declaration files).
-  Verify: section-4.1-4.2 moves after T17; language-service assertions are the oracle.
-
 - [ ] **T15 — workspace write layer: atomic writes, symlink rules.**
   In `src/workspace/`: all product file writes go through one layer. Atomic observable
   writes — temp file + rename in the same directory (IMPLEMENTATION); at every moment a
