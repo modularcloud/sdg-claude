@@ -44,19 +44,6 @@ signature. The entire pipeline must be built; tasks below are dependency-ordered
 
 ## Tasks
 
-- [ ] **T1 — core kernel: byte/text primitives, hashing, canonical JSON, findings model.**
-  In `src/core/`: (a) the exact whitespace and control-character classes of SPEC 1.4 and the
-  line-terminator/line model of SPEC 3 (CRLF, lone LF, lone CR; final line may lack a
-  terminator) as pure helpers over strings and byte offsets; (b) SHA-256 hex hashing with
-  length-prefixed component framing so distinct component sequences never collide (SPEC 5.5;
-  IMPLEMENTATION "Hashing"); (c) the canonical JSON serializer — sorted keys, stable
-  ordering, trailing newline (IMPLEMENTATION cross-cutting); (d) a validation-finding data
-  model carrying SPEC 14 condition number (1–22), exit class per SPEC 12.0, file/location/
-  correction fields, rendered later by the CLI (IMPLEMENTATION cross-cutting); (e) byte-wise
-  string/path comparison helpers (SPEC 12.0: byte-wise, case-sensitive, no normalization).
-  Satisfies groundwork for Finding 1 gaps 1–7 and Finding 2 gaps 1–22.
-  Verify: `npm run build` + `npm run typecheck` pass; exercised by all later tasks.
-
 - [ ] **T2 — glob engine with captures (in-repo).**
   In `src/core/`: the exact glob dialect of SPEC 7 — `*` (possibly empty run of bytes within
   one segment), `?` (one byte within a segment), `**` (any number of whole segments,
