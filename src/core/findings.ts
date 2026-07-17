@@ -99,6 +99,12 @@ export interface Finding {
   readonly line?: number;
   /** 1-based column of a location, in that line's Unicode code points. */
   readonly column?: number;
+  /**
+   * SPEC 5.3/2.1 → 14.9: the full cycle path, as a closed walk of graph-node
+   * identities (dependency cycles) or spec-source paths (import cycles) —
+   * first element repeated at the end; a length-one cycle is `[a, a]`.
+   */
+  readonly cycle?: readonly string[];
 }
 
 /** The exit class of a finding's condition (SPEC 12.0, 14.14). */

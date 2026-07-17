@@ -44,19 +44,6 @@ signature. The entire pipeline must be built; tasks below are dependency-ordered
 
 ## Tasks
 
-- [ ] **T10 — workspace graph: nodes, edges, resolution, cycles.**
-  In `src/core/`: assemble the project graph — requirement nodes + code locations (SPEC
-  5.1); `contains`/`depends`/`embeds`/`references` edge sets with duplicate collapse (SPEC
-  5.2); node identities `path#id` / bare path for roots, workspace-relative `/`-separated
-  (SPEC 1.5). Resolve every reference: unknown `d` → 14.5, unknown `text` target → 14.6,
-  unknown TS reference → 14.7; a reference into an unparseable file reports as unresolved
-  while the file's internal conditions are masked (SPEC 14 masking rule). Detect and report
-  with full paths (SPEC 5.3 → 14.9): dependency cycles over combined
-  `contains`+`depends`+`embeds` on requirement nodes (self-edge = length one; ancestor
-  depend/embed forbidden) and spec import cycles (self-import = length one, SPEC 2.1).
-  Satisfies Finding 1 gap 5 (graph side).
-  Verify: typecheck; section-5.1-5.3 moves after T17/T19.
-
 - [ ] **T11 — journal model and canonical identities.**
   In `src/core/` (format+walk) and `src/workspace/` (file I/O): the journal at
   `.xspec/journal` — plain-text, line-oriented, append-only, one self-contained entry per
