@@ -159,11 +159,13 @@ function matchingGroupNames(
 
 /**
  * SPEC 7.3: the validated `markdown.outDir` (resolves within the workspace
- * root) reduced to its canonical workspace-relative prefix bytes, trailing
- * `/` included — or null when absent or naming the root itself (default
+ * root) reduced to its canonical workspace-relative prefix, trailing `/`
+ * included — or null when absent or naming the root itself (default
  * placement next to each source).
  */
-function outDirPrefixBytes(outDir: string | undefined): Uint8Array | null {
+export function canonicalOutDirPrefix(
+  outDir: string | undefined,
+): string | null {
   if (outDir === undefined) return null;
   const kept: string[] = [];
   for (const segment of outDir.split("/")) {
@@ -175,7 +177,62 @@ function outDirPrefixBytes(outDir: string | undefined): Uint8Array | null {
     kept.push(segment);
   }
   if (kept.length === 0) return null;
-  return utf8Encoder.encode(kept.join("/") + "/");
+  return kept.join("/") + "/";
+}
+
+/** The byte encoding of `canonicalOutDirPrefix` for the byte-wise matcher. */
+function outDirPrefixBytes(outDir: string | undefined): Uint8Array | null {
+  const prefix = canonicalOutDirPrefix(outDir);
+  return prefix === null ? null : utf8Encoder.encode(prefix);
+}
+
+/**
+ * SPEC 7.3/13.2: the configured Markdown emit destinations of the given
+ * discovered spec sources — the paths at which they emit (`NAME.mdx` →
+ * `NAME.md`), placed per `markdown.outDir` preserving workspace-relative
+ * paths. Destinations exist exactly while `markdown` is present with `emit`
+ * true; otherwise the set is empty (SPEC 7.3). `specSourcePaths` are
+ * discovered spec-source paths (always `.mdx`, SPEC 7.1), as strings —
+ * valid discovered paths re-encode to their exact bytes (SPEC 7), so
+ * string equality on these destinations is byte equality.
+ */
+export function markdownEmitDestinations(
+  configuration: Configuration,
+  specSourcePaths: Iterable<string>,
+): ReadonlySet<string> {
+  const destinations = new Set<string>();
+  const markdown = configuration.markdown;
+  if (markdown === undefined || !markdown.emit) return destinations;
+  const prefix = canonicalOutDirPrefix(markdown.outDir) ?? "";
+  for (const path of specSourcePaths) {
+    // SPEC 13.2: `NAME.mdx` emits `NAME.md` — the trailing "x" dropped.
+    destinations.add(prefix + path.slice(0, -1));
+  }
+  return destinations;
+}
+
+/** Why a path is a derived-file path (SPEC 13.4). */
+export type DerivedPathKind =
+  "xspec-name" | "xspec-dir" | "markdown-destination";
+
+/**
+ * SPEC 13.4: classify a workspace-relative `/`-separated path as a
+ * derived-file path — a file name containing `.xspec.`, a path under
+ * `.xspec/`, or a configured Markdown emit destination
+ * (`markdownEmitDestinations`) — or null when it is none. The string-level
+ * companion of the byte-wise exclusions in `classifySources`; the
+ * TypeScript module-linking rule (SPEC 4 → 14.15) classifies resolved
+ * import specifiers with it.
+ */
+export function derivedFilePathKind(
+  path: string,
+  markdownDestinations: ReadonlySet<string>,
+): DerivedPathKind | null {
+  const fileName = path.slice(path.lastIndexOf("/") + 1);
+  if (fileName.includes(".xspec.")) return "xspec-name";
+  if (path.startsWith(".xspec/")) return "xspec-dir";
+  if (markdownDestinations.has(path)) return "markdown-destination";
+  return null;
 }
 
 /**

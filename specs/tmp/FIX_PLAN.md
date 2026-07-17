@@ -44,28 +44,6 @@ signature. The entire pipeline must be built; tasks below are dependency-ordered
 
 ## Tasks
 
-- [ ] **T9 — TypeScript source analysis: imports, markers, text calls, code units.**
-  In `src/core/` via the TypeScript compiler API: parse code-group files (`.tsx` as TSX,
-  anything else as plain TS; non-UTF-8/BOM → 14.20 with location). Spec-module imports in TS
-  (SPEC 4 → 14.15): specifier ends `.xspec`, same form/resolution as 2.1, must designate a
-  discovered spec source; only default and `text` bindings, optionally aliased, optionally
-  type-only (type-only binding = type-level name); forbidden forms — dynamic `import()` with
-  static `.xspec` specifier, any export declaration with a `.xspec` specifier,
-  `import X = require(...)`, and any import/export/require/dynamic-import whose relative
-  specifier designates a derived-file path other than through `.xspec` (SPEC 4, 13.4);
-  non-static dynamic `import()` not analyzed. Markers and sanctioned uses (SPEC 4.5):
-  bare static chain in expression-statement position → `references` edge; scope-aware,
-  value-level rooting (shadowed or type-only roots record nothing and are no condition);
-  `text(node)` calls → `embeds` edges (SPEC 4.3); string argument to `text` in TS → 14.8;
-  non-static bare reference in expression-statement position → 14.8; any other value-level
-  use of a node or `text` binding (aliasing, destructuring, re-export, storage, passing
-  elsewhere) → 14.18; cross-module `text` argument → 14.11 (static detection; runtime side
-  in T13). Code locations and attribution (SPEC 4.6): named code units per the exact
-  construct list, innermost enclosing unit else file, dot-joined chains, `@N` 1-based
-  document-order disambiguation for repeated chains. Satisfies Finding 1 gap 4 (analysis
-  side).
-  Verify: typecheck; sections 4.5, 4.6 files move after T17.
-
 - [ ] **T10 — workspace graph: nodes, edges, resolution, cycles.**
   In `src/core/`: assemble the project graph — requirement nodes + code locations (SPEC
   5.1); `contains`/`depends`/`embeds`/`references` edge sets with duplicate collapse (SPEC
