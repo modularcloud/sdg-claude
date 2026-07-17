@@ -44,20 +44,6 @@ signature. The entire pipeline must be built; tasks below are dependency-ordered
 
 ## Tasks
 
-- [ ] **T2 — glob engine with captures (in-repo).**
-  In `src/core/`: the exact glob dialect of SPEC 7 — `*` (possibly empty run of bytes within
-  one segment), `?` (one byte within a segment), `**` (any number of whole segments,
-  including none); byte-wise case-sensitive matching over workspace-relative UTF-8 path
-  bytes; a `.`-initial path segment matched only by a pattern segment written with leading
-  `.`; detection of patterns resolving outside the workspace root. Plus SPEC 7.5 `files`
-  selectors: capture wildcards `$1`–`$9` (each at most once, one-plus bytes within a single
-  segment, never `/`), `to`-pattern expansion agreement, and the whole-pattern left-to-right
-  fewest-bytes disambiguation rule making every match and capture unique (acceptance
-  examples in SPEC 7.5: `$1-$2.ts` vs `a-b-c.ts`; `*$1*` vs `abc`). No glob library
-  (IMPLEMENTATION "Key libraries"). Satisfies part of Finding 1 gap 7, Finding 2 gap 15
-  (`--file`), 16.
-  Verify: typecheck; behavior observed later via section-7-discovery, 7.4-7.5, 11, 12.3-12.5.
-
 - [ ] **T3 — CLI entry, argument parsing, dispatch, exit taxonomy; retire the stub.**
   Replace the Phase 8 stub: `src/cli/` gets the entry `(argv, cwd, stdout, stderr) → exit
   code` with `src/cli/bin.ts` a trivial wrapper (IMPLEMENTATION Architecture). Implement
