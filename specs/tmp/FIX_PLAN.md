@@ -44,22 +44,6 @@ signature. The entire pipeline must be built; tasks below are dependency-ordered
 
 ## Tasks
 
-- [ ] **T12 — the four hashes.**
-  In `src/core/` over T8/T10/T11 outputs (SPEC 5.5, framing from T1): ownHash — own content
-  sequence, all runs including empty, each referenced node entering as its canonical
-  identity at its position, child vs embedding references distinguished; subtreeHash —
-  (ownHash, child subtreeHashes in document order); effectiveHash — (ownHash, child
-  effectiveHashes in document order, dependency edges as (canonical identity, effectiveHash)
-  pairs of targets sorted by identity string then journal position earliest first, one pair
-  per edge so a depended-and-embedded target contributes two identical pairs); metadataHash
-  — (`d` target set as canonical identities sorted the same way, coverage attribute, sorted
-  tags; roots hash the empty inputs). Reference spellings never enter any hash (SPEC 5.4).
-  Preserve the stated properties of SPEC 5.5 as self-checks in reasoning (journaled
-  renames/moves change no hash; editing an embedded target's text changes the target's
-  hashes, not the embedder's ownHash/subtreeHash). Satisfies Finding 1 gap 5 (5.5).
-  Verify: typecheck; section-5.5 moves once `query node` (T19) exposes hashes; determinism
-  asserted by the harness run-twice helpers.
-
 - [ ] **T13 — generated TypeScript modules: skeleton, branding, runtime `text`.**
   In `src/core/` (emission as pure text generation): for each `NAME.mdx` generate
   `NAME.xspec.ts` in the source file's directory plus whatever companion files (each named
