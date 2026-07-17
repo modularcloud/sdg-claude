@@ -44,26 +44,6 @@ signature. The entire pipeline must be built; tasks below are dependency-ordered
 
 ## Tasks
 
-- [ ] **T13 — generated TypeScript modules: skeleton, branding, runtime `text`.**
-  In `src/core/` (emission as pure text generation): for each `NAME.mdx` generate
-  `NAME.xspec.ts` in the source file's directory plus whatever companion files (each named
-  `NAME.xspec.` + suffix) make the specifier `./NAME.xspec` resolve for consumers under
-  standard TypeScript tooling with **no xspec runtime dependency** — type checking, and
-  runtime under plain Node (SPEC 13.1; note the harness compiles consumer fixtures in
-  CommonJS/NodeNext mode with no package.json, so `./NAME.xspec` must resolve by Node's
-  extension lookup — design companions accordingly). Requirements: generated-file header
-  identifying xspec and the source file (SPEC 4); default export = root node; child
-  sections as readonly properties by segment (bracket access for non-identifier segments);
-  nodes are opaque tokens — only child access and passing to `text()`; missing paths are
-  type errors (SPEC 4.1); `text(node)` returns subtree text as `string` (SPEC 4.3; the
-  `embeds` edge recording is T9's analysis side); per-module branding — cross-module `text`
-  is a type error and at runtime MUST throw an error identifying both the node's module and
-  the called module (SPEC 4.4 → 14.11 runtime half); requirement text reachable at runtime
-  only through `text` (SPEC 4.3). Deterministic output bytes (SPEC 12.0). Satisfies Finding
-  1 gap 4 (4.1, 4.3, 4.4).
-  Verify: typecheck; section-4, 4.1-4.2 (skeleton part), 4.3-4.4 move after T17 wires
-  emission into `build`.
-
 - [ ] **T14 — generated modules: documentation comments and navigation.**
   Extend T13 emission (SPEC 4.2): every generated node carries a documentation comment with
   the node's own text truncated to its first 1000 Unicode code points, `…` appended when
@@ -72,6 +52,13 @@ signature. The entire pipeline must be built; tasks below are dependency-ordered
   `<S>` section, root to file start (design: declaration mapping the language service
   honors; the harness asserts via the TS language-service API, IMPLEMENTATION "Test
   harness"). Satisfies Finding 1 gap 4 (4.2).
+  T13 landed the architecture in `src/core/emission.ts` (rationale in its module header):
+  `NAME.xspec.ts` is a re-export shell, the runtime is `NAME.xspec.impl.js`, and every
+  navigable declaration lives in `NAME.xspec.impl.d.ts` — put the JSDoc doc comments on
+  those `.d.ts` declarations (hover + definitions), duplicate them textually in the
+  `NAME.xspec.ts` shell (the certified doc-comment scan reads that file), and emit
+  `NAME.xspec.impl.d.ts.map` + `sourceMappingURL` so the language service's source mapper
+  redirects definitions into the `.mdx` (mapping works only from declaration files).
   Verify: section-4.1-4.2 moves after T17; language-service assertions are the oracle.
 
 - [ ] **T15 — workspace write layer: atomic writes, symlink rules.**
