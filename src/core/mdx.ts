@@ -18,6 +18,8 @@
 // conditions inside it go unreported. Within a parsed file, every detectable
 // condition is reported, with 14.2's own masking rule (14.2) applied.
 
+import { Parser, tokTypes } from "acorn";
+import acornJsx from "acorn-jsx";
 import remarkMdx from "remark-mdx";
 import remarkParse from "remark-parse";
 import { unified } from "unified";
@@ -255,10 +257,103 @@ interface ParseFailureLike {
 }
 
 /**
- * The MDX parser (IMPLEMENTATION: remark-mdx defines well-formed MDX,
- * SPEC 14.20). Frozen once; `parse` is pure.
+ * Structural view of acorn's internal parser surface (not in its public
+ * types), verified against acorn 8: the two overridden methods below and
+ * the state they touch. `parseSubscript` is acorn's per-access step in a
+ * member/call chain; `declareName` records one declared binding and
+ * raises on redeclaration after recording it.
  */
-const mdxParser = unified().use(remarkParse).use(remarkMdx).freeze();
+interface AcornInternalParser {
+  /** The current token's type and value. */
+  type: unknown;
+  value: unknown;
+  /** True when a newline precedes the current token. */
+  canInsertSemicolon(): boolean;
+  startNodeAt(pos: number, loc: unknown): { expression?: unknown };
+  finishNode(node: object, type: string): unknown;
+  next(): void;
+  scopeStack: readonly unknown[];
+  parseSubscript(...args: unknown[]): unknown;
+  declareName(name: string, bindingType: unknown, pos: number): void;
+}
+
+/**
+ * SPEC 2.1/2.4 require certain files to parse so their defects report as
+ * import or reference findings rather than as parse failures: a postfix
+ * non-null assertion (`BASE!.auth`) is a *dynamic reference* (SPEC 2.4 →
+ * 14.8), and two imports binding one identifier are an *invalid import*
+ * (SPEC 2.1 → 14.15) — both conditions of a parsed file. Stock acorn
+ * rejects both outright, so the expression grammar is widened by exactly
+ * these two rules and nothing else; remark-mdx's grammar, so extended,
+ * defines well-formed MDX (IMPLEMENTATION; SPEC 14.20):
+ *
+ * - a postfix `!` with no preceding newline parses as a
+ *   `TSNonNullExpression` chain node (the shared static-reference
+ *   analyzer then classifies the reference dynamic, SPEC 2.4);
+ * - a module-scope redeclaration — duplicate import bindings — does not
+ *   abort the parse (import validation reports 14.15, SPEC 2.1); acorn
+ *   records the binding before raising, so swallowing the raise leaves
+ *   consistent parser state. Redeclarations in inner scopes still fail.
+ */
+function xspecAcornExtension(BaseParser: typeof Parser): typeof Parser {
+  // One more derivation level, so the class handed in stays untouched.
+  const Extended = class extends (BaseParser as unknown as new () => object) {};
+  const prototype = Extended.prototype as AcornInternalParser;
+  const superParseSubscript = prototype.parseSubscript;
+  const superDeclareName = prototype.declareName;
+
+  prototype.parseSubscript = function (
+    this: AcornInternalParser,
+    ...args: unknown[]
+  ): unknown {
+    if (
+      this.type === tokTypes.prefix &&
+      this.value === "!" &&
+      !this.canInsertSemicolon()
+    ) {
+      const node = this.startNodeAt(args[1] as number, args[2]);
+      node.expression = args[0];
+      this.next();
+      return this.finishNode(node, "TSNonNullExpression");
+    }
+    return superParseSubscript.apply(this, args);
+  };
+
+  prototype.declareName = function (
+    this: AcornInternalParser,
+    name: string,
+    bindingType: unknown,
+    pos: number,
+  ): void {
+    try {
+      superDeclareName.call(this, name, bindingType, pos);
+    } catch (error) {
+      if (
+        this.scopeStack.length === 1 &&
+        error instanceof SyntaxError &&
+        error.message.includes("has already been declared")
+      ) {
+        return;
+      }
+      throw error;
+    }
+  };
+
+  return Extended as unknown as typeof Parser;
+}
+
+/** The extended acorn: JSX plus the two SPEC-required widenings above. */
+const specAcorn = Parser.extend(acornJsx(), xspecAcornExtension);
+
+/**
+ * The MDX parser (IMPLEMENTATION: remark-mdx defines well-formed MDX,
+ * SPEC 14.20 — with the expression grammar widened per
+ * `xspecAcornExtension`). Frozen once; `parse` is pure.
+ */
+const mdxParser = unified()
+  .use(remarkParse)
+  .use(remarkMdx, { acorn: specAcorn })
+  .freeze();
 
 // ---------------------------------------------------------------------------
 // Parsing

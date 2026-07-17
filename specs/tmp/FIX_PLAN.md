@@ -44,22 +44,6 @@ signature. The entire pipeline must be built; tasks below are dependency-ordered
 
 ## Tasks
 
-- [ ] **T7 — MDX imports and references: static-argument analyzer.**
-  In `src/core/`: spec-module import parsing/validation (SPEC 2.1 → 14.15): single default
-  binding only; specifier relative `./`/`../` ending `.xspec`, `DIR/NAME.xspec` designating
-  `DIR/NAME.mdx`, target a discovered spec-group file; no duplicate bound identifiers when
-  either import is a spec import; never binding `S`/`Spec`/`text`; unused imports valid, no
-  edges. Extract `d` references (SPEC 2.2: single ref or array literal, external chain or
-  local string, mixed, module-itself → root, duplicates collapse, `d={[]}` ≡ omitted) and
-  `{text(...)}` embeddings (SPEC 2.3). Implement the shared static-reference analyzer
-  (IMPLEMENTATION: one analyzer for MDX expression spans and TS sources): static string
-  literal (plain quotes only) or static property chain — import binding + identifier `.x` or
-  string-literal `["x"]` accesses; optional chaining, non-null assertion, parens, template
-  literals, anything else → dynamic → 14.8; `text(...)` exactly one argument (SPEC 2.4).
-  Record reference spellings + spans for later rewriting (SPEC 6.4/6.5). Import-cycle
-  detection itself lands in T10. Satisfies Finding 1 gap 2.
-  Verify: typecheck; sections 2.1–2.4 files move after T17.
-
 - [ ] **T8 — text model: Markdown compilation, own/subtree text, own content.**
   In `src/core/`, pure functions over T6/T7 models across files: SPEC 3 compilation —
   remove imports, section tags with their props, MDX comments; replace each `text(...)`
