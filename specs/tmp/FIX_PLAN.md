@@ -44,25 +44,6 @@ signature. The entire pipeline must be built; tasks below are dependency-ordered
 
 ## Tasks
 
-- [ ] **T6 — MDX parse and document model: sections, IDs, ranges, props.**
-  In `src/core/`: parse discovered spec sources with remark-mdx (its grammar defines
-  well-formed MDX; report parse-failure location → 14.20, including non-UTF-8 or BOM per
-  SPEC 1.6). Build the per-file document model: `<S>`/`<Spec>` equivalence, self-closing =
-  empty leaf (SPEC 1.1); implicit root preceding all sections (SPEC 1.2); structural-path
-  IDs — child ID = parent ID + `.` + exactly one segment, top-level = one segment, no level
-  skipping, per-file uniqueness (SPEC 1.3 → 14.1, 14.2 with its masking rule for immediate
-  children of an id-less section, 14.3); segment/tag character rules with the exact
-  whitespace/control classes (SPEC 1.4 → 14.4); byte-offset source ranges — non-root spans
-  opening tag through closing tag or the self-closing tag's own characters, root spans the
-  whole file (SPEC 1.7). Validate props per SPEC 2.5 (`coverage` only `required`/`none`),
-  2.6 (`tags` whitespace splitting, duplicate collapse, empty ≡ omitted), 2.7 (only `id`,
-  `d`, `coverage`, `tags`; no repeats, no spreads, quoted-form string values for
-  `id`/`coverage`/`tags`, braced `d` → 14.17; only permitted constructs, MDX comments
-  allowed, no other JSX/expression/exports → 14.16). Satisfies Finding 1 gaps 1–2 (parse
-  side).
-  Verify: typecheck; behavior lands with T17 (build) — sections 1.1–1.4, 2.5–2.7 files then
-  move.
-
 - [ ] **T7 — MDX imports and references: static-argument analyzer.**
   In `src/core/`: spec-module import parsing/validation (SPEC 2.1 → 14.15): single default
   binding only; specifier relative `./`/`../` ending `.xspec`, `DIR/NAME.xspec` designating
