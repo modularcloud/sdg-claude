@@ -44,19 +44,6 @@ signature. The entire pipeline must be built; tasks below are dependency-ordered
 
 ## Tasks
 
-- [ ] **T5 — source discovery: symlink-free walk, group matching, exclusions.**
-  In `src/workspace/`: directory walking that never follows symbolic links — a symlink (to
-  file or directory, broken or not) is never discovered and never traversed (SPEC 7); apply
-  T2 globs per configured spec/code group from the workspace root (config file's directory);
-  files may belong to multiple groups; empty groups/maps valid. Enforce: spec-group matches
-  must end `.mdx` (SPEC 7.1 → 14.19); a file matched by both a spec and a code group →
-  14.14; discovered paths containing `#` or not valid UTF-8 → 14.19; derived files never
-  discovered — exclude paths whose file name contains `.xspec.`, paths under `.xspec/`, and
-  configured Markdown emit destinations exactly when emission is enabled (SPEC 13.4, 7.3);
-  discovery is controlled exclusively by configuration — imports never add files (SPEC 7).
-  Satisfies part of Finding 1 gap 7; Finding 2 gap 20 (discovery side).
-  Verify: typecheck + manual probe via T4's error paths; section-7-discovery moves.
-
 - [ ] **T6 — MDX parse and document model: sections, IDs, ranges, props.**
   In `src/core/`: parse discovered spec sources with remark-mdx (its grammar defines
   well-formed MDX; report parse-failure location → 14.20, including non-UTF-8 or BOM per

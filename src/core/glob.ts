@@ -534,6 +534,72 @@ export class CompiledGlob {
       new Map(),
     );
   }
+
+  /**
+   * Could some path strictly under the given directory match this pattern?
+   * `prefix` is a non-empty workspace-relative directory path (no trailing
+   * slash). Supports the SPEC 7 discovery walk: a directory no configured
+   * pattern may match into need not be entered — an over-approximation
+   * that never prunes a matchable path. The check runs the pattern-segment
+   * automaton over the prefix — `**` closing over its zero-segment match,
+   * the SPEC 7 dot rule blocking wildcard segments (and `**`) from
+   * dot-initial path segments — then asks whether pattern segments remain
+   * to consume at least one further path segment (a file under the prefix
+   * always adds one). Captures, in capture modes, act as anonymous
+   * one-plus-byte wildcards here, as in {@link CompiledGlob.matches}.
+   */
+  mayMatchWithin(prefix: PathInput): boolean {
+    const prefixSegments = splitOnSlash(toBytes(prefix));
+    const scratch = new Map<number, Uint8Array>();
+    const noValues = new Map<number, Uint8Array>();
+    // A state is a pattern index: `index` means pattern segments 0..index-1
+    // are consumed. Entering a globstar index also enters the index past it
+    // (SPEC 7: `**` matches any number of whole segments, including none).
+    const addWithClosure = (set: Set<number>, start: number): void => {
+      for (let index = start; index <= this.segments.length; index += 1) {
+        if (set.has(index)) return;
+        set.add(index);
+        if (
+          index === this.segments.length ||
+          this.segments[index].kind !== "globstar"
+        ) {
+          return;
+        }
+      }
+    };
+    let states = new Set<number>();
+    addWithClosure(states, 0);
+    for (const segment of prefixSegments) {
+      // SPEC 7: a path segment beginning with `.` is matched only by a
+      // pattern segment written with a leading `.` — never absorbed by `**`.
+      const dotInitial = segment.length > 0 && segment[0] === DOT;
+      const next = new Set<number>();
+      for (const index of states) {
+        if (index === this.segments.length) continue; // pattern exhausted
+        const patternSegment = this.segments[index];
+        if (patternSegment.kind === "globstar") {
+          if (!dotInitial) addWithClosure(next, index);
+        } else if (
+          (!dotInitial || patternSegment.writtenLeadingDot) &&
+          matchTokenSegment(
+            patternSegment.tokens,
+            segment,
+            "bind",
+            noValues,
+            scratch,
+          )
+        ) {
+          addWithClosure(next, index + 1);
+        }
+      }
+      if (next.size === 0) return false;
+      states = next;
+    }
+    for (const index of states) {
+      if (index < this.segments.length) return true;
+    }
+    return false;
+  }
 }
 
 /**
