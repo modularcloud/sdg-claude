@@ -28,7 +28,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, sdg/initial-build]
   workflow_dispatch:
 
 concurrency:
