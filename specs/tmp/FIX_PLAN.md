@@ -44,16 +44,6 @@ signature. The entire pipeline must be built; tasks below are dependency-ordered
 
 ## Tasks
 
-- [ ] **T16 — graph data store under `.xspec/`.**
-  In `src/workspace/` + `src/core/`: persist graph data — requirement nodes, code locations,
-  edges by kind, source ranges, all four hashes, coverage attributes, tags, and the recorded
-  paths of the most recently generated derived files (SPEC 13.3) — via the canonical
-  serializer (T1), byte-deterministic (SPEC 12.0), content otherwise opaque (13.3's stated
-  contract: location under `.xspec/`, derived-file classification, refresh/failure/staleness
-  behaviors). Provide load + compare-with-current (the staleness predicate `check` and
-  refresh-on-read need, SPEC 13.3/14.10). Satisfies Finding 2 gap 19 (13.3 store).
-  Verify: typecheck; section-13.3 moves after T17/T18.
-
 - [ ] **T17 — `xspec build` end to end.**
   In `src/cli/` + `src/workspace/`, assembling T4–T16 (SPEC 12.1): load config (errors exit
   2 before source analysis, 14.14), discover, parse and validate spec + code sources
