@@ -44,20 +44,6 @@ signature. The entire pipeline must be built; tasks below are dependency-ordered
 
 ## Tasks
 
-- [ ] **T23 — change categories (5.6).**
-  In `src/core/`: pure derivation over (baseline graph, current graph, identity mapping):
-  `changed` (added, deleted, or ownHash changed — structural child edits originate at the
-  parent), `metadata-changed` (metadataHash), `descendant-changed` (subtreeHash changed
-  because of a descendant), `upstream-changed` (effectiveHash changed via a dependency
-  target's effectiveHash, or a subtree node other than itself gaining/losing/retargeting
-  dependency edges). Both-sides rule: added/deleted nodes are `changed` only — no category
-  through their own hashes (the sole exception, 9.2's impacted-code counting, is T24's).
-  Categories are independent flags; attribution to originating nodes (`changed` or
-  `metadata-changed`) exactly per the three worked cascades in SPEC 5.6 (leaf edit;
-  child add/remove; `d`-target edit; coverage/tags-only edits propagate nothing). Satisfies
-  Finding 1 gap 5 (5.6), Finding 2 gap 6.
-  Verify: typecheck; section-5.6 moves with T24.
-
 - [ ] **T24 — `xspec impact`.**
   In `src/cli/` + `src/core/` (SPEC 9, 9.1–9.3): `impact --base <ref>` comparing current vs
   T22 baseline with journal-mapped identities. Requirement impact = T23 categories with
