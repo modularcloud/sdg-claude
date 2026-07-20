@@ -44,18 +44,6 @@ signature. The entire pipeline must be built; tasks below are dependency-ordered
 
 ## Tasks
 
-- [ ] **T15 — workspace write layer: atomic writes, symlink rules.**
-  In `src/workspace/`: all product file writes go through one layer. Atomic observable
-  writes — temp file + rename in the same directory (IMPLEMENTATION); at every moment a
-  written path holds prior state or complete new content (SPEC 13.5). Plain committable
-  files, stable ordering (SPEC 13.4). Symlink rules (SPEC 13.4 → 14.22): writing a derived
-  file replaces whatever occupies its path, a symlink included, never writing through it; a
-  durable file's path occupied by anything other than a plain file is never read/appended/
-  replaced (journal → 14.13, session → corrupt 14.21); a symlink at a workspace-relative
-  directory component of any write path → refuse before modifying anything, report 14.22
-  (`check` reports it without writing). Satisfies Finding 2 gap 20 (13.4 write side).
-  Verify: typecheck; section-13.4 moves after T17; full green needs T35 (`check`).
-
 - [ ] **T16 — graph data store under `.xspec/`.**
   In `src/workspace/` + `src/core/`: persist graph data — requirement nodes, code locations,
   edges by kind, source ranges, all four hashes, coverage attributes, tags, and the recorded
