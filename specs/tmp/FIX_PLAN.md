@@ -44,27 +44,6 @@ signature. The entire pipeline must be built; tasks below are dependency-ordered
 
 ## Tasks
 
-- [ ] **T20 — `xspec ids` and `xspec show`.**
-  In `src/cli/` (SPEC 12.3, 12.4): `ids` — grouped by file (byte order of workspace-relative
-  path), IDs in document order; `--tree` nesting by section structure; `--file <glob>` (T2
-  rules); `--unreferenced` (no incoming dependency edges from specs or code; `contains`
-  never counts); restricted listings re-nest under the nearest listed ancestor or file top
-  level — the tree contains exactly the listed IDs; `--json` per 12.0. `show <node>` — the
-  human report: identity, source range, own+subtree text, hashes, tags, coverage attribute
-  (absent for roots), edges by kind. Satisfies Finding 2 gap 18 (ids/show half).
-  Pre-answer step from T18 (SPEC 13.3 refresh-on-read, also for T21/T24/T33/T34): call
-  `prepareGraphForRead` (src/cli/prepare.ts) first; on `ok:false` return its exit (failures
-  already emitted per 12.0); answer from `analysis` (graph, textModel, hashes, journal — a
-  WorkspaceAnalysis, src/workspace/pipeline.ts). Workspace half: `prepareWorkspaceForRead`
-  (src/workspace/refresh.ts). `check` must never use it (14.10). T19's
-  src/cli/commands/query.ts is the worked pattern (note: `query` alone forces the JSON form
-  even for the failed-refresh report — SPEC 11 JSON-only; `show`/`ids` emit human form
-  without `--json`). The `show` report content mirrors `query node`'s document; `show
-  --json` may carry the same shape (the harness decodes both through one adapter).
-  core/paths.ts holds the SPEC 12.0 shortest-witness byte tie rule for reuse in T21/T24.
-  Verify: section-12.3-12.5 moves (full green needs remaining commands); section-1.6-1.7,
-  1.5 residuals.
-
 - [ ] **T21 — coverage: computation and `xspec coverage`.**
   In `src/core/` + `src/cli/` (SPEC 8, 8.1, 8.2): reachability over the profile's
   `edgeKinds` between non-root participants — `direct` = single edge, `transitive` = path of
@@ -78,6 +57,15 @@ signature. The entire pipeline must be built; tasks below are dependency-ordered
   in the fixed order (root node, `coverage="none"`, non-leaf under leaves, lacking every
   `targetTags` tag); `--check` exits 1 on any uncovered required node; `--json` parity.
   Unknown profile name → exit 2 (12.0). Satisfies Finding 2 gaps 2–4.
+  Pre-answer step from T18 (SPEC 13.3 refresh-on-read, also for T24/T33/T34): call
+  `prepareGraphForRead` (src/cli/prepare.ts) first; on `ok:false` return its exit (failures
+  already emitted per 12.0); answer from `analysis` (graph, textModel, hashes, journal — a
+  WorkspaceAnalysis, src/workspace/pipeline.ts). Workspace half: `prepareWorkspaceForRead`
+  (src/workspace/refresh.ts). `check` must never use it (14.10). Worked patterns:
+  src/cli/commands/query.ts (JSON-only), ids.ts, show.ts (human + `--json` forms); shared
+  CLI helpers in src/cli/commands/common.ts (usageError, emitDocument, nodeReportDocument,
+  resolveRequirementNode). core/paths.ts holds the SPEC 12.0 shortest-witness byte tie rule
+  (shortestWitnessPath) for the one-shortest-covering-path rule here and in T24.
   Verify: section-8; also the coverage-observed parts of earlier sections (e.g.
   section-2.5-2.6).
 

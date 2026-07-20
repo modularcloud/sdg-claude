@@ -31,53 +31,29 @@
 // identity, unknown group, or invalid flag value below, all reported on
 // standard error with standard output left empty.
 
-import type { JsonObject, JsonValue } from "../../core/canonical-json.js";
-import { canonicalJson } from "../../core/canonical-json.js";
-import type { ByteRange } from "../../core/bytes.js";
+import type { JsonObject } from "../../core/canonical-json.js";
 import type { ExitCode } from "../../core/findings.js";
 import type { CompiledGlob } from "../../core/glob.js";
 import { compileGlob } from "../../core/glob.js";
 import type {
-  GraphEdge,
   GraphEdgeKind,
   RequirementNode,
   WorkspaceGraph,
 } from "../../core/graph.js";
 import { DEPENDENCY_EDGE_KINDS } from "../../core/graph.js";
 import { shortestWitnessPath } from "../../core/paths.js";
-import type { WorkspaceAnalysis } from "../../workspace/pipeline.js";
 import type { Invocation } from "../args.js";
 import { flagList, flagValue } from "../args.js";
-import type { CliWriter, CommandContext } from "../io.js";
+import type { CommandContext } from "../io.js";
 import { prepareGraphForRead } from "../prepare.js";
-
-/**
- * SPEC 12.0: usage errors — unknown identities, unknown groups, invalid
- * flag values — exit 2 with the diagnostic on standard error and nothing on
- * standard output (the exit-2 error prevents emitting the single JSON
- * document). Diagnostics echo argv tokens and static text only, keeping
- * output byte-deterministic (SPEC 12.0).
- */
-function usageError(stderr: CliWriter, command: string, message: string): 2 {
-  stderr.write(`xspec: ${command}: ${message}\n`);
-  return 2;
-}
-
-/** SPEC 11/12.0: the single JSON document, `query`'s only output form. */
-function emitDocument(stdout: CliWriter, document: JsonValue): 0 {
-  stdout.write(canonicalJson(document));
-  return 0;
-}
-
-/** A source range (SPEC 1.7) as JSON data. */
-function rangeJson(range: ByteRange): JsonObject {
-  return { start: range.start, end: range.end };
-}
-
-/** One edge (SPEC 5.2) as JSON data. */
-function edgeJson(edge: GraphEdge): JsonObject {
-  return { from: edge.source, to: edge.target, kind: edge.kind };
-}
+import {
+  edgeJson,
+  emitDocument,
+  nodeReportDocument,
+  rangeJson,
+  resolveRequirementNode,
+  usageError,
+} from "./common.js";
 
 /**
  * The one row contract of `nodes`, `subtree`, and `ancestors` (SPEC 11):
@@ -96,42 +72,6 @@ function rowJson(node: RequirementNode): JsonObject {
 /** The `nodes` document of `nodes`/`subtree`/`ancestors` (SPEC 11). */
 function rowsDocument(nodes: readonly RequirementNode[]): JsonObject {
   return { nodes: nodes.map(rowJson) };
-}
-
-/** How a `<node>` / `<graph-node>` argument resolved. */
-type NodeResolution =
-  | { readonly ok: true; readonly node: RequirementNode }
-  | { readonly ok: false; readonly message: string };
-
-/**
- * Resolve a `<node>` argument: a requirement-node identity — `path#id`, or
- * a bare path for a file's root node (SPEC 11, 1.5). A code-location
- * identity or a path in no configured group is unknown here (12.0).
- */
-function resolveRequirementNode(
-  graph: WorkspaceGraph,
-  raw: string,
-): NodeResolution {
-  const node = graph.requirementNode(raw);
-  if (node !== undefined) {
-    return { ok: true, node };
-  }
-  if (graph.codeLocation(raw) !== undefined) {
-    return {
-      ok: false,
-      message:
-        `'${raw}' names a code location — <node> takes a requirement-node ` +
-        `identity: path#id, or a bare path for a file's root node ` +
-        `(SPEC 11, 1.5)`,
-    };
-  }
-  return {
-    ok: false,
-    message:
-      `unknown requirement node '${raw}' — expected path#id, or a bare ` +
-      `path for a file's root node; a path in no configured group is ` +
-      `unknown (SPEC 11, 1.5, 12.0)`,
-  };
 }
 
 /**
@@ -252,42 +192,6 @@ function rowMatches(node: RequirementNode, filters: NodesFilters): boolean {
     return false;
   }
   return true;
-}
-
-/** The `query node` report document (SPEC 11). */
-function nodeReportDocument(
-  analysis: WorkspaceAnalysis,
-  node: RequirementNode,
-): JsonObject {
-  const hashes = analysis.hashes.get(node.identity);
-  if (hashes === undefined) {
-    throw new Error(
-      `xspec internal error: no hashes for requirement node ${node.identity}`,
-    );
-  }
-  return {
-    identity: node.identity,
-    sourceRange: rangeJson(node.section.range),
-    // SPEC 1.6: both text values fully expanded.
-    ownText: analysis.textModel.ownText(node.document, node.section),
-    subtreeText: analysis.textModel.subtreeText(node.document, node.section),
-    // SPEC 5.5: all four hashes.
-    hashes: {
-      ownHash: hashes.ownHash,
-      subtreeHash: hashes.subtreeHash,
-      effectiveHash: hashes.effectiveHash,
-      metadataHash: hashes.metadataHash,
-    },
-    tags: [...node.section.tags],
-    // SPEC 11/5.5: reported as absent for a root node (key omitted).
-    coverage: node.section.coverage ?? undefined,
-    // SPEC 11: incoming and outgoing edges by kind — the graph's
-    // (source, kind, target) order, deterministic (SPEC 12.0).
-    edges: {
-      incoming: analysis.graph.incomingEdges(node.identity).map(edgeJson),
-      outgoing: analysis.graph.outgoingEdges(node.identity).map(edgeJson),
-    },
-  };
 }
 
 /**
