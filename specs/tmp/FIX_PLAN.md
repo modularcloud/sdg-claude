@@ -44,27 +44,6 @@ signature. The entire pipeline must be built; tasks below are dependency-ordered
 
 ## Tasks
 
-- [ ] **T19 — `xspec query` (all six subcommands).**
-  In `src/cli/` + `src/core/` (SPEC 11): JSON-only output — a single JSON document with or
-  without `--json`; `node` (identity, source range, own+subtree text, four hashes, tags,
-  coverage attribute — absent for roots, incoming+outgoing edges by kind); `nodes` with
-  conjunctive `--group` (spec groups only; code group name = invalid flag value exit 2),
-  `--file` (T2 glob rules; outside-root pattern = invalid flag value exit 2), `--tag`,
-  `--coverage` (never matches roots); `edges` with `--from`/`--to`/`--kinds` over all four
-  kinds (default: no filter); `subtree` (node + descendants, document order); `ancestors`
-  (proper ancestors, nearest first, ending at file root); `reachable` (nontrivial dependency
-  path under `--kinds` — dependency kinds only, `contains` invalid, default all three;
-  shortest witness with the SPEC 12.0 byte tie rule; equal from/to → no path). Identity
-  forms: `path#id`, bare path root vs code file resolved by group, path in no group =
-  unknown → exit 2. Deterministic ordering everywhere. Satisfies Finding 2 gap 15.
-  Building block from T18 (SPEC 13.3 refresh-on-read, also for T20/T21/T24/T33/T34):
-  call `prepareGraphForRead` (src/cli/prepare.ts) first; on `ok:false` return its exit
-  (failures already emitted per 12.0); answer from `analysis` (graph, textModel, hashes,
-  journal — a WorkspaceAnalysis, src/workspace/pipeline.ts). Workspace half:
-  `prepareWorkspaceForRead` (src/workspace/refresh.ts). `check` must never use it (14.10).
-  Verify: section-11; large parts of section-1.x, 5.x now observable — run section-11,
-  section-1.5, section-5.1-5.3, section-5.5 and report.
-
 - [ ] **T20 — `xspec ids` and `xspec show`.**
   In `src/cli/` (SPEC 12.3, 12.4): `ids` — grouped by file (byte order of workspace-relative
   path), IDs in document order; `--tree` nesting by section structure; `--file <glob>` (T2
@@ -73,7 +52,16 @@ signature. The entire pipeline must be built; tasks below are dependency-ordered
   level — the tree contains exactly the listed IDs; `--json` per 12.0. `show <node>` — the
   human report: identity, source range, own+subtree text, hashes, tags, coverage attribute
   (absent for roots), edges by kind. Satisfies Finding 2 gap 18 (ids/show half).
-  Pre-answer step: `prepareGraphForRead` (src/cli/prepare.ts), per the T19 note.
+  Pre-answer step from T18 (SPEC 13.3 refresh-on-read, also for T21/T24/T33/T34): call
+  `prepareGraphForRead` (src/cli/prepare.ts) first; on `ok:false` return its exit (failures
+  already emitted per 12.0); answer from `analysis` (graph, textModel, hashes, journal — a
+  WorkspaceAnalysis, src/workspace/pipeline.ts). Workspace half: `prepareWorkspaceForRead`
+  (src/workspace/refresh.ts). `check` must never use it (14.10). T19's
+  src/cli/commands/query.ts is the worked pattern (note: `query` alone forces the JSON form
+  even for the failed-refresh report — SPEC 11 JSON-only; `show`/`ids` emit human form
+  without `--json`). The `show` report content mirrors `query node`'s document; `show
+  --json` may carry the same shape (the harness decodes both through one adapter).
+  core/paths.ts holds the SPEC 12.0 shortest-witness byte tie rule for reuse in T21/T24.
   Verify: section-12.3-12.5 moves (full green needs remaining commands); section-1.6-1.7,
   1.5 residuals.
 

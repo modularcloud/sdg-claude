@@ -12,6 +12,7 @@ import { loadWorkspace } from "../workspace/config.js";
 import type { Invocation } from "./args.js";
 import { COMMAND_PATHS, parseArgv } from "./args.js";
 import { buildCommand } from "./commands/build.js";
+import { queryCommand } from "./commands/query.js";
 import type { CliWriter, CommandContext } from "./io.js";
 import { emitConfigurationErrors } from "./report.js";
 
@@ -44,6 +45,14 @@ const HANDLERS: ReadonlyMap<string, CommandHandler> = new Map(
       case "build":
         // SPEC 12.1.
         return [path, buildCommand];
+      case "query node":
+      case "query nodes":
+      case "query edges":
+      case "query subtree":
+      case "query ancestors":
+      case "query reachable":
+        // SPEC 11.
+        return [path, queryCommand];
       default:
         return [path, notImplemented];
     }
