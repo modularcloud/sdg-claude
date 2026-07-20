@@ -44,31 +44,6 @@ signature. The entire pipeline must be built; tasks below are dependency-ordered
 
 ## Tasks
 
-- [ ] **T21 — coverage: computation and `xspec coverage`.**
-  In `src/core/` + `src/cli/` (SPEC 8, 8.1, 8.2): reachability over the profile's
-  `edgeKinds` between non-root participants — `direct` = single edge, `transitive` = path of
-  one-plus edges; `contains` never grants coverage or appears in paths; roots never appear
-  in coverage paths as boundary/intermediate/target (spec-group boundaries contribute only
-  non-root nodes; root-sourced/targeted dependency edges stay ordinary edges elsewhere).
-  Required set (8.1): target group restricted by `targetTags` and `targets:"leaves"`,
-  excluding `coverage="none"` and roots. Output (8.2): all profiles or one named; counts of
-  required/covered/uncovered/ignored; every covered/uncovered/ignored identity; one shortest
-  covering path per covered node (12.0 tie rule); ignored nodes with all applicable reasons
-  in the fixed order (root node, `coverage="none"`, non-leaf under leaves, lacking every
-  `targetTags` tag); `--check` exits 1 on any uncovered required node; `--json` parity.
-  Unknown profile name → exit 2 (12.0). Satisfies Finding 2 gaps 2–4.
-  Pre-answer step from T18 (SPEC 13.3 refresh-on-read, also for T24/T33/T34): call
-  `prepareGraphForRead` (src/cli/prepare.ts) first; on `ok:false` return its exit (failures
-  already emitted per 12.0); answer from `analysis` (graph, textModel, hashes, journal — a
-  WorkspaceAnalysis, src/workspace/pipeline.ts). Workspace half: `prepareWorkspaceForRead`
-  (src/workspace/refresh.ts). `check` must never use it (14.10). Worked patterns:
-  src/cli/commands/query.ts (JSON-only), ids.ts, show.ts (human + `--json` forms); shared
-  CLI helpers in src/cli/commands/common.ts (usageError, emitDocument, nodeReportDocument,
-  resolveRequirementNode). core/paths.ts holds the SPEC 12.0 shortest-witness byte tie rule
-  (shortestWitnessPath) for the one-shortest-covering-path rule here and in T24.
-  Verify: section-8; also the coverage-observed parts of earlier sections (e.g.
-  section-2.5-2.6).
-
 - [ ] **T22 — baseline reconstruction from git.**
   In `src/workspace/` (SPEC 6.3; IMPLEMENTATION: system `git` executable, read-only plumbing
   subcommands, no library, no writes): reconstruct the baseline graph from workspace content

@@ -12,6 +12,7 @@ import { loadWorkspace } from "../workspace/config.js";
 import type { Invocation } from "./args.js";
 import { COMMAND_PATHS, parseArgv } from "./args.js";
 import { buildCommand } from "./commands/build.js";
+import { coverageCommand } from "./commands/coverage.js";
 import { idsCommand } from "./commands/ids.js";
 import { queryCommand } from "./commands/query.js";
 import { showCommand } from "./commands/show.js";
@@ -53,6 +54,9 @@ const HANDLERS: ReadonlyMap<string, CommandHandler> = new Map(
       case "show":
         // SPEC 12.4.
         return [path, showCommand];
+      case "coverage":
+        // SPEC 8.2.
+        return [path, coverageCommand];
       case "query node":
       case "query nodes":
       case "query edges":
