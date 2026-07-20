@@ -30,9 +30,13 @@
 // generation (`xspec build`, and the commands that regenerate as `build`
 // does) — a refresh leaves them unchanged, and the record legitimately
 // outlives the generation set (that is what makes orphan removal and
-// 14.10's recorded-orphan arm possible, SPEC 13.3, 13.4, 12.1). The
-// predicate therefore compares against the refreshed form: current
-// snapshot, recorded paths preserved.
+// 14.10's recorded-orphan arm possible, SPEC 13.3, 13.4, 12.1). A refresh
+// writes exactly what `xspec build` would write except for that record
+// clause (SPEC 13.3): with a recoverable record, build's data with the
+// stored record preserved; with none — the store missing or malformed —
+// there are no recorded paths to preserve, and the written data is exactly
+// build's, would-be record included. The predicate compares against the
+// same refreshed form, so both judge the store by one rule.
 //
 // The content is otherwise opaque (SPEC 13.3): its observable contract is
 // its location under `.xspec/`, its classification as a derived file
@@ -155,21 +159,26 @@ export function buildGraphSnapshot(
 
 /**
  * The graph data a refresh writes (SPEC 13.3): exactly what `xspec build`
- * would write, except the recorded derived-file paths are left unchanged —
- * the current snapshot with the stored record preserved. When no record is
- * recoverable (missing or malformed store), the record is empty: derived
- * files orphaned while the record was itself missing are outside xspec's
- * knowledge (SPEC 13.4). `build` itself does not use this — it records the
+ * would write, except the recorded derived-file paths are left unchanged.
+ * `build` is what the build would write for the current sources and
+ * configuration — snapshot plus the would-be generated set as its record
+ * (core/build.ts, `BuildOutputs.graphData`). With a recoverable record the
+ * refresh preserves it (the record is updated only by generation, and it
+ * legitimately outlives the generation set — SPEC 13.3, 13.4); with none —
+ * the store missing or malformed — there are no recorded paths to leave
+ * unchanged, and the refresh writes build's data as is. Files orphaned
+ * while the record was missing stay outside xspec's knowledge either way
+ * (SPEC 13.4): the would-be record names only currently generated paths,
+ * never such orphans. `build` itself does not use this — it records the
  * paths it just generated.
  */
 export function refreshedGraphData(
   stored: GraphData | null,
-  current: GraphSnapshot,
+  build: GraphData,
 ): GraphData {
-  return {
-    snapshot: current,
-    derivedFiles: stored === null ? [] : stored.derivedFiles,
-  };
+  return stored === null
+    ? build
+    : { snapshot: build.snapshot, derivedFiles: stored.derivedFiles };
 }
 
 /**
@@ -188,25 +197,26 @@ export function recordedDerivedFiles(
  * The compare-with-current predicate (SPEC 13.3, 14.10): whether the
  * stored graph data matches the current sources and configuration —
  * operationally, whether the stored bytes are exactly what a refresh
- * would write (the current snapshot with the stored record preserved,
- * `refreshedGraphData`). False when the store is missing (`storedBytes`
- * null) or malformed (`storedData` null — its bytes cannot equal a
- * canonical serialization). The refreshing reads refresh exactly when this
- * is false (SPEC 13.3); `check`, which never refreshes, reports the
- * graph-data file stale exactly when this is false (SPEC 14.10) — by the
- * same rule, so the retained derived-file record never reads as staleness
- * (SPEC 13.3: the record is mandated to be left unchanged).
+ * would write (`refreshedGraphData` over `build`, what `xspec build`
+ * would write for the current sources and configuration). False when the
+ * store is missing (`storedBytes` null) or malformed (`storedData` null —
+ * its bytes cannot equal a canonical serialization, which always parses).
+ * The refreshing reads refresh exactly when this is false (SPEC 13.3);
+ * `check`, which never refreshes, reports the graph-data file stale
+ * exactly when this is false (SPEC 14.10) — by the same rule, so the
+ * retained derived-file record never reads as staleness (SPEC 13.3: the
+ * record is mandated to be left unchanged).
  */
 export function graphDataMatchesCurrent(
   storedBytes: Uint8Array | null,
   storedData: GraphData | null,
-  current: GraphSnapshot,
+  build: GraphData,
 ): boolean {
   if (storedBytes === null) {
     return false;
   }
   const expected = utf8Encoder.encode(
-    serializeGraphData(refreshedGraphData(storedData, current)),
+    serializeGraphData(refreshedGraphData(storedData, build)),
   );
   return bytesEqual(storedBytes, expected);
 }

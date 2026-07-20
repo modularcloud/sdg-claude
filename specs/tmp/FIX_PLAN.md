@@ -44,20 +44,6 @@ signature. The entire pipeline must be built; tasks below are dependency-ordered
 
 ## Tasks
 
-- [ ] **T18 — refresh-on-read for graph-consuming commands.**
-  In `src/workspace/`: the shared pre-answer step for `ids`, `show`, `coverage`, `impact`,
-  `review`, `query` (SPEC 13.3): when graph data is missing or does not match current
-  sources+configuration, refresh it — writing exactly what `xspec build` would write except
-  no TypeScript or Markdown is generated or removed and recorded derived-file paths are left
-  unchanged — before answering; when current sources fail build validation, report the
-  validation errors and exit 1 without answering and without modifying anything. `check`
-  never refreshes (14.10). Satisfies Finding 2 gap 19 (refresh half). Building blocks from
-  T17: `analyzeWorkspace` (src/workspace/pipeline.ts) is the shared discover-parse-validate
-  step (exit-2 `configurationErrors` vs exit-1 `findings`); `refreshedGraphData`/
-  `graphDataMatchesCurrent` (src/core/graph-data.ts) define the refresh content and the
-  staleness predicate; findings rendering is src/cli/report.ts (`emitFindingsReport`).
-  Verify: typecheck; observable once T19/T20 land (stale-data scenarios in section-13.3).
-
 - [ ] **T19 — `xspec query` (all six subcommands).**
   In `src/cli/` + `src/core/` (SPEC 11): JSON-only output — a single JSON document with or
   without `--json`; `node` (identity, source range, own+subtree text, four hashes, tags,
@@ -71,6 +57,11 @@ signature. The entire pipeline must be built; tasks below are dependency-ordered
   shortest witness with the SPEC 12.0 byte tie rule; equal from/to → no path). Identity
   forms: `path#id`, bare path root vs code file resolved by group, path in no group =
   unknown → exit 2. Deterministic ordering everywhere. Satisfies Finding 2 gap 15.
+  Building block from T18 (SPEC 13.3 refresh-on-read, also for T20/T21/T24/T33/T34):
+  call `prepareGraphForRead` (src/cli/prepare.ts) first; on `ok:false` return its exit
+  (failures already emitted per 12.0); answer from `analysis` (graph, textModel, hashes,
+  journal — a WorkspaceAnalysis, src/workspace/pipeline.ts). Workspace half:
+  `prepareWorkspaceForRead` (src/workspace/refresh.ts). `check` must never use it (14.10).
   Verify: section-11; large parts of section-1.x, 5.x now observable — run section-11,
   section-1.5, section-5.1-5.3, section-5.5 and report.
 
@@ -82,6 +73,7 @@ signature. The entire pipeline must be built; tasks below are dependency-ordered
   level — the tree contains exactly the listed IDs; `--json` per 12.0. `show <node>` — the
   human report: identity, source range, own+subtree text, hashes, tags, coverage attribute
   (absent for roots), edges by kind. Satisfies Finding 2 gap 18 (ids/show half).
+  Pre-answer step: `prepareGraphForRead` (src/cli/prepare.ts), per the T19 note.
   Verify: section-12.3-12.5 moves (full green needs remaining commands); section-1.6-1.7,
   1.5 residuals.
 
