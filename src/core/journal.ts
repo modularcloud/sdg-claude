@@ -616,3 +616,128 @@ export class Journal {
     return current;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Baseline replay (SPEC 6.3)
+// ---------------------------------------------------------------------------
+
+/**
+ * The raw content bytes of each line (terminators excluded; the final line
+ * may be unterminated) — the same line model `parseJournal` walks.
+ */
+function lineContents(bytes: Uint8Array): Uint8Array[] {
+  const lines: Uint8Array[] = [];
+  let offset = 0;
+  while (offset < bytes.length) {
+    const terminator = bytes.indexOf(LF, offset);
+    const end = terminator === -1 ? bytes.length : terminator;
+    lines.push(bytes.subarray(offset, end));
+    offset = end + 1;
+  }
+  return lines;
+}
+
+function sameContent(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let index = 0; index < a.length; index += 1) {
+    if (a[index] !== b[index]) return false;
+  }
+  return true;
+}
+
+/** The outcome of computing the SPEC 6.3 baseline→current replay mapping. */
+export type JournalReplayResult =
+  | {
+      readonly ok: true;
+      /**
+       * The journal entries present in the current journal but absent from
+       * the journal content at the baseline ref, in file order, as a
+       * walkable Journal: `mapForward` maps a baseline identity to its
+       * current identity, composing chained mappings (SPEC 6.3).
+       */
+      readonly replay: Journal;
+    }
+  | {
+      readonly ok: false;
+      /**
+       * Why the replay cannot be computed — a prefix violation or
+       * unresolvable entries — naming the offending entries or files
+       * (SPEC 6.3). The caller reports it as a usage error (12.0).
+       */
+      readonly problem: string;
+    };
+
+/**
+ * SPEC 6.3: compute the replay mapping from a baseline ref's journal
+ * content to the current journal content. A journal file absent on either
+ * side reads as an empty journal (callers pass zero bytes); an empty
+ * journal is a prefix of every journal. The prefix requirement is
+ * entry-wise — the baseline journal's lines must be an exact leading run of
+ * the current journal's lines, each byte-identical (the journal is
+ * append-only, SPEC 6.1) — and the entries beyond that prefix are the
+ * replay, applied in file order with chained mappings composing.
+ *
+ * Callers validate the baseline journal first (a baseline whose journal has
+ * malformed lines fails workspace validation, 14.13, before replay is ever
+ * computed); with the prefix holding, any malformed current line therefore
+ * lies in the replay suffix and makes the mapping unresolvable.
+ */
+export function computeJournalReplay(
+  baselineBytes: Uint8Array,
+  currentBytes: Uint8Array,
+): JournalReplayResult {
+  const baselineLines = lineContents(baselineBytes);
+  const currentLines = lineContents(currentBytes);
+  // SPEC 6.3: the journal at the baseline ref must be a prefix of the
+  // current journal — otherwise the append-only invariant (6.1) was
+  // violated and no replay suffix exists.
+  if (baselineLines.length > currentLines.length) {
+    const base = String(baselineLines.length);
+    const current = String(currentLines.length);
+    return {
+      ok: false,
+      problem:
+        `the journal content at the baseline ref has ${base} ` +
+        `${baselineLines.length === 1 ? "entry" : "entries"} but the ` +
+        `current ${JOURNAL_PATH} has only ${current} — the baseline ` +
+        `journal is not a prefix of the current journal, so the ` +
+        `append-only invariant was violated (SPEC 6.1, 6.3); restore ` +
+        `${JOURNAL_PATH} from version control so it extends the journal ` +
+        `content at the baseline ref`,
+    };
+  }
+  for (let index = 0; index < baselineLines.length; index += 1) {
+    if (!sameContent(baselineLines[index], currentLines[index])) {
+      const line = String(index + 1);
+      return {
+        ok: false,
+        problem:
+          `line ${line} of the current ${JOURNAL_PATH} differs from line ` +
+          `${line} of the journal content at the baseline ref — the ` +
+          `baseline journal is not a prefix of the current journal, so ` +
+          `the append-only invariant was violated (SPEC 6.1, 6.3); ` +
+          `restore ${JOURNAL_PATH} from version control so it extends the ` +
+          `journal content at the baseline ref`,
+      };
+    }
+  }
+  // SPEC 6.3: replay is unresolvable when the entries to apply cannot be
+  // parsed and validated — the findings name the offending lines (14.13's
+  // message form, reused here as the naming duty's carrier).
+  const parsed = parseJournal(currentBytes);
+  if (parsed.findings.length > 0) {
+    return {
+      ok: false,
+      problem:
+        `replaying the journal entries absent at the baseline ref ` +
+        `produced no resolvable mapping — ` +
+        parsed.findings.map((finding) => finding.message).join("; "),
+    };
+  }
+  return {
+    ok: true,
+    replay: new Journal(
+      parsed.entries.filter((entry) => entry.line > baselineLines.length),
+    ),
+  };
+}

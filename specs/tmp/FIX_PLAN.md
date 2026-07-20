@@ -44,20 +44,6 @@ signature. The entire pipeline must be built; tasks below are dependency-ordered
 
 ## Tasks
 
-- [ ] **T22 — baseline reconstruction from git.**
-  In `src/workspace/` (SPEC 6.3; IMPLEMENTATION: system `git` executable, read-only plumbing
-  subcommands, no library, no writes): reconstruct the baseline graph from workspace content
-  at a ref — sources and configuration as they stood at the ref (group membership from that
-  config), journal content at the ref (absent = empty; empty is a prefix of every journal);
-  apply the journal entries present now but absent at the ref, in file order, composing
-  chained mappings, to map baseline→current identities; compute baseline hashes with the
-  baseline journal. Fail with an actionable error naming offending entries/files — exit 2
-  usage error (12.0) — when replay is ambiguous/unresolvable, when the baseline journal is
-  not a prefix of the current one, or when baseline content cannot be parsed and validated
-  as a workspace; baseline resolution precedes source validation (12.0). Satisfies Finding
-  2 gap 5.
-  Verify: typecheck; observable with T24 (impact) — section-6.3 then moves.
-
 - [ ] **T23 — change categories (5.6).**
   In `src/core/`: pure derivation over (baseline graph, current graph, identity mapping):
   `changed` (added, deleted, or ownHash changed — structural child edits originate at the

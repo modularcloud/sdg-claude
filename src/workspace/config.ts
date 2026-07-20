@@ -16,7 +16,7 @@
 
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
-import type { Configuration } from "../core/config.js";
+import type { Configuration, ConfigurationResult } from "../core/config.js";
 import { parseConfiguration } from "../core/config.js";
 import type { Finding } from "../core/findings.js";
 
@@ -110,22 +110,7 @@ export async function loadWorkspace(
       configFileName,
     );
   }
-  let text: string;
-  try {
-    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-  } catch {
-    return failure(
-      `not valid UTF-8 — the configuration must be well-formed TypeScript ` +
-        `(SPEC 7, 14.14)`,
-      configFileName,
-    );
-  }
-  // A leading byte-order mark is valid in a TypeScript file; strip it so
-  // the parser sees the module text. (The SPEC 14.20 BOM rule constrains
-  // discovered sources, not the configuration.)
-  if (text.startsWith("\uFEFF")) text = text.slice(1);
-
-  const parsed = parseConfiguration(text, configFileName);
+  const parsed = parseConfigurationBytes(bytes, configFileName);
   if (!parsed.ok) {
     return { ok: false, findings: parsed.findings };
   }
@@ -137,4 +122,39 @@ export async function loadWorkspace(
       configuration: parsed.configuration,
     },
   };
+}
+
+/**
+ * Decode and parse a configuration file's exact bytes (SPEC 7, 14.14) — the
+ * I/O-free tail of `loadWorkspace`, shared with baseline reconstruction
+ * (SPEC 6.3), which reads the configuration content as it stood at a git
+ * ref instead of from the filesystem.
+ */
+export function parseConfigurationBytes(
+  bytes: Uint8Array,
+  configFileName: string,
+): ConfigurationResult {
+  let text: string;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return {
+      ok: false,
+      findings: [
+        {
+          condition: 14,
+          file: configFileName,
+          message:
+            `not valid UTF-8 — the configuration must be well-formed ` +
+            `TypeScript (SPEC 7, 14.14)`,
+        },
+      ],
+    };
+  }
+  // A leading byte-order mark is valid in a TypeScript file; strip it so
+  // the parser sees the module text. (The SPEC 14.20 BOM rule constrains
+  // discovered sources, not the configuration.)
+  if (text.startsWith("\uFEFF")) text = text.slice(1);
+
+  return parseConfiguration(text, configFileName);
 }

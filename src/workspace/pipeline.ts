@@ -35,6 +35,7 @@ import * as path from "node:path";
 import { compareBytes } from "../core/bytes.js";
 import type { CodeAnalysis } from "../core/code-analysis.js";
 import { analyzeCodeSource } from "../core/code-analysis.js";
+import type { Configuration } from "../core/config.js";
 import type { SourceClassification } from "../core/discovery.js";
 import { markdownEmitDestinations } from "../core/discovery.js";
 import type { Finding } from "../core/findings.js";
@@ -105,6 +106,27 @@ function orderFindings(findings: readonly Finding[]): Finding[] {
 }
 
 /**
+ * A workspace's content, however sourced: the classified file listing, a
+ * byte reader for the discovered sources, and the journal. The filesystem
+ * workspace (`analyzeWorkspace`) and a git tree at a baseline ref
+ * (SPEC 6.3, src/workspace/baseline.ts) both analyze through this shape,
+ * so the baseline analysis and the current analysis can never drift apart.
+ */
+export interface WorkspaceContent {
+  readonly classification: SourceClassification;
+  /**
+   * Read one discovered source's exact bytes; null when the content cannot
+   * be read (reported as an unparseable source, SPEC 14.20).
+   */
+  readonly readSource: (rel: string) => Promise<Uint8Array | null>;
+  /**
+   * Load the journal (SPEC 6.1). Called only when analysis proceeds past
+   * configuration errors — those precede all source analysis (SPEC 14).
+   */
+  readonly loadJournal: () => Promise<LoadedJournal>;
+}
+
+/**
  * Analyze the workspace (see the module header): discover, parse, and
  * validate every configured source, load the journal, assemble the graph,
  * and compute the text model and hashes. Total over invalid workspaces —
@@ -116,6 +138,25 @@ export async function analyzeWorkspace(
 ): Promise<WorkspaceAnalysis> {
   const { root, configuration } = workspace;
   const classification = await discoverSources(root, configuration);
+  return analyzeWorkspaceContent(configuration, {
+    classification,
+    readSource: (rel) => readSourceBytes(root, rel),
+    loadJournal: () => loadJournal(root),
+  });
+}
+
+/**
+ * Analyze already-classified workspace content (see the module header):
+ * parse and validate every discovered source, load the journal, assemble
+ * the graph, and compute the text model and hashes. The shared body behind
+ * `analyzeWorkspace` (filesystem) and baseline reconstruction (a git tree
+ * at a ref, SPEC 6.3).
+ */
+export async function analyzeWorkspaceContent(
+  configuration: Configuration,
+  content: WorkspaceContent,
+): Promise<WorkspaceAnalysis> {
+  const { classification } = content;
 
   // SPEC 14/14.14: discovery-level configuration errors are usage-class and
   // precede all source analysis — with one present, no source is parsed and
@@ -163,8 +204,11 @@ export async function analyzeWorkspace(
   // 14.20) --------------------------------------------------------------
   const specs: SpecFileAnalysis[] = [];
   for (const source of classification.specSources) {
-    const bytes = await readSourceBytes(root, source.path, findings);
-    if (bytes === null) continue;
+    const bytes = await content.readSource(source.path);
+    if (bytes === null) {
+      findings.push(unreadableSourceFinding(source.path));
+      continue;
+    }
     try {
       const parsed = parseSpecSource(source.path, bytes);
       if (parsed.kind === "unparseable") {
@@ -203,8 +247,11 @@ export async function analyzeWorkspace(
   // 14.20) ---------------------------------------------------------------
   const code: CodeAnalysis[] = [];
   for (const source of classification.codeSources) {
-    const bytes = await readSourceBytes(root, source.path, findings);
-    if (bytes === null) continue;
+    const bytes = await content.readSource(source.path);
+    if (bytes === null) {
+      findings.push(unreadableSourceFinding(source.path));
+      continue;
+    }
     const analyzed = analyzeCodeSource(source.path, bytes, {
       specPaths,
       markdownDestinations,
@@ -218,7 +265,7 @@ export async function analyzeWorkspace(
   }
 
   // --- journal (SPEC 6.1, 5.4 → 14.13) ----------------------------------
-  const journal = await loadJournal(root);
+  const journal = await content.loadJournal();
   findings.push(...journal.findings);
 
   // --- graph, text model, hashes (SPEC 5; conditions 14.5–14.7, 14.9) ---
@@ -244,27 +291,34 @@ export async function analyzeWorkspace(
 }
 
 /**
- * Read one discovered source's exact bytes. A file that vanished (or became
- * unreadable) between the walk and the read — concurrent modification,
- * SPEC 13.5 last-write-wins territory — is reported as an unparseable
- * source (14.20): it was discovered, and its content cannot be analyzed.
+ * Read one discovered source's exact bytes from the filesystem, null when
+ * unreadable — the reader `analyzeWorkspace` hands the shared body.
  */
 async function readSourceBytes(
   root: string,
   rel: string,
-  findings: Finding[],
 ): Promise<Uint8Array | null> {
   try {
     return await fsp.readFile(absoluteOf(root, rel));
   } catch {
-    findings.push({
-      condition: 20,
-      file: rel,
-      message:
-        `unparseable source: the discovered file could not be read — it ` +
-        `changed or vanished while the command ran; re-run the command ` +
-        `once the workspace is quiescent (SPEC 13.5, 14.20)`,
-    });
     return null;
   }
+}
+
+/**
+ * SPEC 14.20: a discovered source whose content cannot be read. On the
+ * filesystem that means the file vanished (or became unreadable) between
+ * the walk and the read — concurrent modification, SPEC 13.5
+ * last-write-wins territory; it was discovered, and its content cannot be
+ * analyzed.
+ */
+function unreadableSourceFinding(rel: string): Finding {
+  return {
+    condition: 20,
+    file: rel,
+    message:
+      `unparseable source: the discovered file could not be read — it ` +
+      `changed or vanished while the command ran; re-run the command ` +
+      `once the workspace is quiescent (SPEC 13.5, 14.20)`,
+  };
 }

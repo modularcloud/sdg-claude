@@ -24,6 +24,7 @@ import {
   parseJournal,
   serializeJournalEntry,
 } from "../core/journal.js";
+import type { PathOccupant } from "./writes.js";
 import {
   appendDurableFile,
   classifyOccupant,
@@ -53,6 +54,57 @@ function journalAbsolutePath(root: string): string {
 }
 
 /**
+ * The journal loaded from raw file bytes (`null` = the file is absent, an
+ * empty journal, SPEC 6.1) — the I/O-free tail of `loadJournal`, shared
+ * with baseline reconstruction (SPEC 6.3), which reads the journal content
+ * as it stood at a git ref instead of from the filesystem.
+ */
+export function journalFromBytes(bytes: Uint8Array | null): LoadedJournal {
+  if (bytes === null) {
+    return {
+      fileState: "absent",
+      journal: new Journal([]),
+      entries: [],
+      findings: [],
+    };
+  }
+  const parsed = parseJournal(bytes);
+  return {
+    fileState: "plain",
+    journal: new Journal(parsed.entries),
+    entries: parsed.entries,
+    findings: parsed.findings,
+  };
+}
+
+/**
+ * The journal whose path is occupied by something other than a plain file
+ * (SPEC 6.1, 13.4 → 14.13): never read — one 14.13 finding, no entries.
+ * Shared with baseline reconstruction (SPEC 6.3), where the occupant is a
+ * git tree entry (a symbolic link or a directory at the journal's path at
+ * the ref) instead of a filesystem occupant.
+ */
+export function occupiedJournal(occupant: PathOccupant): LoadedJournal {
+  const finding: Finding = {
+    condition: 13,
+    file: JOURNAL_PATH,
+    message:
+      `journal error: the journal path ${JOURNAL_PATH} is occupied by ` +
+      `${describeOccupant(occupant)}, not a plain file — a durable file's ` +
+      `path occupied by anything other than a plain file is never read, ` +
+      `appended to, or replaced (SPEC 6.1, 13.4); remove the occupant ` +
+      `and restore the journal as a plain file from version control ` +
+      `(SPEC 14.13)`,
+  };
+  return {
+    fileState: "occupied",
+    journal: new Journal([]),
+    entries: [],
+    findings: [finding],
+  };
+}
+
+/**
  * Load the workspace's journal (SPEC 6.1): an absent file is an empty
  * journal; a plain file is parsed and validated (core); anything else at the
  * path — symbolic link, directory, or other non-plain occupant — is never
@@ -64,39 +116,12 @@ export async function loadJournal(root: string): Promise<LoadedJournal> {
   const absolute = journalAbsolutePath(root);
   const occupant = await classifyOccupant(absolute);
   if (occupant === "absent") {
-    return {
-      fileState: "absent",
-      journal: new Journal([]),
-      entries: [],
-      findings: [],
-    };
+    return journalFromBytes(null);
   }
   if (occupant !== "file") {
-    const finding: Finding = {
-      condition: 13,
-      file: JOURNAL_PATH,
-      message:
-        `journal error: the journal path ${JOURNAL_PATH} is occupied by ` +
-        `${describeOccupant(occupant)}, not a plain file — a durable file's ` +
-        `path occupied by anything other than a plain file is never read, ` +
-        `appended to, or replaced (SPEC 6.1, 13.4); remove the occupant ` +
-        `and restore the journal as a plain file from version control ` +
-        `(SPEC 14.13)`,
-    };
-    return {
-      fileState: "occupied",
-      journal: new Journal([]),
-      entries: [],
-      findings: [finding],
-    };
+    return occupiedJournal(occupant);
   }
-  const parsed = parseJournal(await fsp.readFile(absolute));
-  return {
-    fileState: "plain",
-    journal: new Journal(parsed.entries),
-    entries: parsed.entries,
-    findings: parsed.findings,
-  };
+  return journalFromBytes(await fsp.readFile(absolute));
 }
 
 /**
