@@ -44,23 +44,6 @@ signature. The entire pipeline must be built; tasks below are dependency-ordered
 
 ## Tasks
 
-- [ ] **T17 — `xspec build` end to end.**
-  In `src/cli/` + `src/workspace/`, assembling T4–T16 (SPEC 12.1): load config (errors exit
-  2 before source analysis, 14.14), discover, parse and validate spec + code sources
-  reporting **all** independent findings (SPEC 14 preamble; masking rules), resolve the
-  graph, compute hashes; on success generate TypeScript modules (13.1), emit Markdown when
-  `markdown.emit` is true — `NAME.mdx` → `NAME.md`, placed per `markdown.outDir` preserving
-  workspace-relative paths (SPEC 3, 7.3, 13.2) — and write graph data (13.3); regenerate
-  every derived file and remove recorded derived files no longer generated (orphan removal
-  via recorded paths only, 13.3/13.4); policy is NOT evaluated (SPEC 12.1, 14.12). A build
-  that fails — validation errors exit 1 (findings report on stdout) or configuration error
-  exit 2 — modifies nothing: every derived file and all graph data stay byte-identical
-  (SPEC 12.1). Satisfies Finding 2 gap 17 (build half); makes Finding 1 gaps 1–4, 7
-  observable.
-  Verify: `npm run build && npm test` — expect section-12.1-12.2 (build part), 3, 13.1-13.2,
-  and much of 1.x/2.x/4.x to move; run at least section-1.1-1.2, section-2.7, section-3,
-  section-13.1-13.2 individually and report.
-
 - [ ] **T18 — refresh-on-read for graph-consuming commands.**
   In `src/workspace/`: the shared pre-answer step for `ids`, `show`, `coverage`, `impact`,
   `review`, `query` (SPEC 13.3): when graph data is missing or does not match current
@@ -68,7 +51,11 @@ signature. The entire pipeline must be built; tasks below are dependency-ordered
   no TypeScript or Markdown is generated or removed and recorded derived-file paths are left
   unchanged — before answering; when current sources fail build validation, report the
   validation errors and exit 1 without answering and without modifying anything. `check`
-  never refreshes (14.10). Satisfies Finding 2 gap 19 (refresh half).
+  never refreshes (14.10). Satisfies Finding 2 gap 19 (refresh half). Building blocks from
+  T17: `analyzeWorkspace` (src/workspace/pipeline.ts) is the shared discover-parse-validate
+  step (exit-2 `configurationErrors` vs exit-1 `findings`); `refreshedGraphData`/
+  `graphDataMatchesCurrent` (src/core/graph-data.ts) define the refresh content and the
+  staleness predicate; findings rendering is src/cli/report.ts (`emitFindingsReport`).
   Verify: typecheck; observable once T19/T20 land (stale-data scenarios in section-13.3).
 
 - [ ] **T19 — `xspec query` (all six subcommands).**

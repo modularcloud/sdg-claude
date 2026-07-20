@@ -931,6 +931,25 @@ export function parseSpecSource(
         finding: parseFailureFinding(path, error, text, offsets),
       };
     }
+    if (error instanceof RangeError) {
+      // SPEC 14.20: nesting beyond what the recursive walk can process (a
+      // call-stack overflow surfaces as a RangeError) makes the file
+      // unparseable — a finding, never a crash (SPEC 12.0: exit codes
+      // partition all outcomes). `mdxParser.parse` above is guarded the
+      // same way by its own catch-all.
+      return {
+        kind: "unparseable",
+        finding: {
+          condition: 20,
+          file: path,
+          range: { start: 0, end: 0 },
+          message:
+            `unparseable source: not well-formed MDX — the file's nesting ` +
+            `exceeds what the parser can process, so no location inside ` +
+            `it can be analyzed; simplify or split the file (SPEC 14.20)`,
+        },
+      };
+    }
     throw error;
   }
   builder.validateStructure();

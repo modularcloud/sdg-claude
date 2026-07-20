@@ -7,12 +7,13 @@
 // standard-output content, usage and configuration error messages and all
 // other diagnostic text standard-error content.
 
-import type { ExitCode, Finding } from "../core/findings.js";
-import { conditionName } from "../core/findings.js";
+import type { ExitCode } from "../core/findings.js";
 import { loadWorkspace } from "../workspace/config.js";
 import type { Invocation } from "./args.js";
 import { COMMAND_PATHS, parseArgv } from "./args.js";
+import { buildCommand } from "./commands/build.js";
 import type { CliWriter, CommandContext } from "./io.js";
+import { emitConfigurationErrors } from "./report.js";
 
 /** One command's implementation, dispatched by `Invocation.command`. */
 export type CommandHandler = (
@@ -35,26 +36,19 @@ const notImplemented: CommandHandler = (invocation, context) => {
 
 /**
  * The dispatch table: one handler per SPEC 12.5 command path. Later tasks
- * replace `notImplemented` entries with real implementations.
+ * replace the remaining `notImplemented` entries with real implementations.
  */
 const HANDLERS: ReadonlyMap<string, CommandHandler> = new Map(
-  COMMAND_PATHS.map((path) => [path, notImplemented]),
+  COMMAND_PATHS.map((path): [string, CommandHandler] => {
+    switch (path) {
+      case "build":
+        // SPEC 12.1.
+        return [path, buildCommand];
+      default:
+        return [path, notImplemented];
+    }
+  }),
 );
-
-/**
- * SPEC 12.0/14.14: render one configuration-error finding as a diagnostic
- * line. Configuration errors are usage errors: the message is
- * standard-error content, and standard output stays empty.
- */
-function renderConfigurationError(finding: Finding): string {
-  const location =
-    finding.file === undefined
-      ? ""
-      : finding.line === undefined
-        ? `${finding.file}: `
-        : `${finding.file}:${String(finding.line)}: `;
-  return `xspec: ${conditionName(finding.condition)}: ${location}${finding.message}\n`;
-}
 
 /**
  * The CLI entry: parse per SPEC 12.0, dispatch per SPEC 12.5, return the
@@ -92,9 +86,7 @@ export async function main(
   // the single JSON document, so standard output stays empty (12.0).
   const loaded = await loadWorkspace(cwd, result.invocation.config);
   if (!loaded.ok) {
-    for (const finding of loaded.findings) {
-      stderr.write(renderConfigurationError(finding));
-    }
+    emitConfigurationErrors(stderr, loaded.findings);
     return 2;
   }
   return handler(result.invocation, {

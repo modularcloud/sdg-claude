@@ -1353,28 +1353,52 @@ export function parseConfiguration(
   fileName: string,
 ): ConfigurationResult {
   const findings = new ConfigFindings(fileName);
-  // SPEC 14.14: a configuration file that is not well-formed TypeScript.
-  if (!checkSyntax(text, fileName, findings)) {
-    return { ok: false, findings: findings.findings };
+  try {
+    // SPEC 14.14: a configuration file that is not well-formed TypeScript.
+    if (!checkSyntax(text, fileName, findings)) {
+      return { ok: false, findings: findings.findings };
+    }
+    const sourceFile = ts.createSourceFile(
+      fileName,
+      text,
+      ts.ScriptTarget.Latest,
+      /* setParentNodes */ true,
+      ts.ScriptKind.TS,
+    );
+    const argument = checkForm(sourceFile, findings);
+    if (argument === null) {
+      return { ok: false, findings: findings.findings };
+    }
+    const reduced = reduceLiteral(argument, sourceFile, findings);
+    if (reduced === null) {
+      return { ok: false, findings: findings.findings };
+    }
+    const configuration = validateSchema(reduced, findings);
+    if (findings.count > 0) {
+      return { ok: false, findings: findings.findings };
+    }
+    return { ok: true, configuration };
+  } catch (error) {
+    // SPEC 14.14: a file whose nesting exceeds what the recursive parser
+    // and this static analysis can process (a call-stack overflow surfaces
+    // as a RangeError) is not analyzable as well-formed declarative
+    // configuration — a configuration error, never a crash: exit codes
+    // partition all outcomes (SPEC 12.0). Anything else is an internal
+    // defect and propagates.
+    if (!(error instanceof RangeError)) throw error;
+    return {
+      ok: false,
+      findings: [
+        {
+          condition: 14,
+          file: fileName,
+          message:
+            `not well-formed TypeScript in the declarative form of SPEC 7 ` +
+            `— the file's expression nesting exceeds what the parser can ` +
+            `process; flatten the configuration to plain literal form ` +
+            `(SPEC 7, 14.14)`,
+        },
+      ],
+    };
   }
-  const sourceFile = ts.createSourceFile(
-    fileName,
-    text,
-    ts.ScriptTarget.Latest,
-    /* setParentNodes */ true,
-    ts.ScriptKind.TS,
-  );
-  const argument = checkForm(sourceFile, findings);
-  if (argument === null) {
-    return { ok: false, findings: findings.findings };
-  }
-  const reduced = reduceLiteral(argument, sourceFile, findings);
-  if (reduced === null) {
-    return { ok: false, findings: findings.findings };
-  }
-  const configuration = validateSchema(reduced, findings);
-  if (findings.count > 0) {
-    return { ok: false, findings: findings.findings };
-  }
-  return { ok: true, configuration };
 }

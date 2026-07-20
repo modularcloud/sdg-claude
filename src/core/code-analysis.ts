@@ -178,35 +178,62 @@ export function analyzeCodeSource(
   const offsets = new Utf8Offsets(decoded.text);
   // SPEC 14.20: `.tsx` parses as TSX, any other name as plain TypeScript.
   const tsx = path.endsWith(".tsx");
-  const sourceFile = ts.createSourceFile(
-    path,
-    decoded.text,
-    ts.ScriptTarget.Latest,
-    /* setParentNodes */ true,
-    tsx ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
-  );
-  const program = createSingleFileProgram(sourceFile, tsx);
-  const syntactic = program.getSyntacticDiagnostics(sourceFile);
-  if (syntactic.length > 0) {
+  try {
+    const sourceFile = ts.createSourceFile(
+      path,
+      decoded.text,
+      ts.ScriptTarget.Latest,
+      /* setParentNodes */ true,
+      tsx ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+    );
+    const program = createSingleFileProgram(sourceFile, tsx);
+    const syntactic = program.getSyntacticDiagnostics(sourceFile);
+    if (syntactic.length > 0) {
+      return {
+        kind: "unparseable",
+        finding: parseFailureFinding(
+          path,
+          sourceFile,
+          offsets,
+          tsx,
+          syntactic[0],
+        ),
+      };
+    }
+    const analyzer = new CodeAnalyzer(
+      path,
+      sourceFile,
+      offsets,
+      program.getTypeChecker(),
+      context,
+    );
+    return { kind: "analysis", analysis: analyzer.analyze() };
+  } catch (error) {
+    // SPEC 14.20: a file whose nesting exceeds what the recursive parser
+    // and analysis can process (a call-stack overflow surfaces as a
+    // RangeError) is not well-formed TypeScript this product can analyze —
+    // an unparseable source, never a crash (SPEC 12.0: exit codes
+    // partition all outcomes). Anything else is an internal defect and
+    // propagates.
+    if (!(error instanceof RangeError)) throw error;
     return {
       kind: "unparseable",
-      finding: parseFailureFinding(
-        path,
-        sourceFile,
-        offsets,
-        tsx,
-        syntactic[0],
-      ),
+      finding: stackOverflowFinding(path, tsx ? "TSX" : "plain TypeScript"),
     };
   }
-  const analyzer = new CodeAnalyzer(
-    path,
-    sourceFile,
-    offsets,
-    program.getTypeChecker(),
-    context,
-  );
-  return { kind: "analysis", analysis: analyzer.analyze() };
+}
+
+/** The 14.20 finding for a source the parser cannot process (overflow). */
+function stackOverflowFinding(path: string, grammar: string): Finding {
+  return {
+    condition: 20,
+    file: path,
+    range: { start: 0, end: 0 },
+    message:
+      `unparseable source: not well-formed ${grammar} — the file's ` +
+      `nesting exceeds what the parser can process, so no location inside ` +
+      `it can be analyzed; simplify or split the file (SPEC 14.20)`,
+  };
 }
 
 /**
