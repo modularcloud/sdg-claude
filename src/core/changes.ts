@@ -139,6 +139,30 @@ export interface NodeChange {
    * node is `upstream-changed`.
    */
   readonly upstreamChanged: readonly NodeChange[];
+  /**
+   * SPEC 5.5/5.6: the node's per-edge dependency-target multiset differs —
+   * a dependency edge was added, removed, or retargeted (both-sides nodes
+   * only; always false for added/deleted nodes, the both-sides rule). With
+   * no `changed` flag this is exactly a `d`-target change (a `text(...)`
+   * edit changes own content), so `changed || depEdgesChanged` is SPEC
+   * 9.3's propagation-path terminus: "a node whose own edit explains the
+   * change — a `changed` node, or a `metadata-changed` node whose `d`
+   * targets changed".
+   */
+  readonly depEdgesChanged: boolean;
+  /**
+   * The node's children matched as children on both sides (module header) —
+   * the `contains` steps of SPEC 9.3's propagation paths, in the current
+   * side's document order. Empty for added/deleted nodes.
+   */
+  readonly matchedChildren: readonly NodeChange[];
+  /**
+   * The targets of the node's dependency edges present on both sides
+   * (module header) — the dependency steps of SPEC 9.3's propagation
+   * paths, one record per matched target, in the current side's edge
+   * order. Empty for added/deleted nodes.
+   */
+  readonly matchedDependencyTargets: readonly NodeChange[];
 }
 
 /** One category of one node with its attribution (SPEC 5.6, 9.1). */
@@ -205,6 +229,9 @@ interface MutableNodeChange {
   effectiveChanged: boolean;
   descendantChanged: NodeChange[];
   upstreamChanged: NodeChange[];
+  depEdgesChanged: boolean;
+  matchedChildren: NodeChange[];
+  matchedDependencyTargets: NodeChange[];
 }
 
 /** One record's full internal state. */
@@ -365,6 +392,9 @@ class ChangeComputation {
         effectiveChanged: false,
         descendantChanged: [],
         upstreamChanged: [],
+        depEdgesChanged: false,
+        matchedChildren: [],
+        matchedDependencyTargets: [],
       },
       ordinal: this.states.length,
       baselineNode,
@@ -434,6 +464,17 @@ class ChangeComputation {
           state.matchedChildren.push(childState);
         }
       }
+
+      // Expose the comparisons the impact renderer walks (SPEC 9.2, 9.3):
+      // the dependency-edge multiset flag and the cross-side relations, as
+      // records.
+      state.change.depEdgesChanged = state.depEdgesChanged;
+      state.change.matchedChildren = state.matchedChildren.map(
+        (child) => child.change,
+      );
+      state.change.matchedDependencyTargets = state.matchedDepTargets.map(
+        (target) => target.change,
+      );
     }
   }
 

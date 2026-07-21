@@ -44,25 +44,6 @@ signature. The entire pipeline must be built; tasks below are dependency-ordered
 
 ## Tasks
 
-- [ ] **T24 — `xspec impact`.**
-  In `src/cli/` + `src/core/` (SPEC 9, 9.1–9.3): `impact --base <ref>` comparing current vs
-  T22 baseline with journal-mapped identities. Requirement impact = T23 categories with
-  attribution (9.1). Impacted code (9.2): impact edges = union of a location's
-  `references`+`embeds` edges in both graphs; one-side nodes count as subtreeHash-and-
-  effectiveHash-changed; directly impacted (edge to subtreeHash-changed node) vs
-  transitively impacted (effectiveHash changed, subtreeHash not); locations absent from the
-  current graph reported under baseline identity. Output (9.3): grouped by category; maximal
-  `descendant-changed`-only ancestor chains with identical attribution collapse to one
-  entry; per impacted location one impact edge + one shortest propagation path (target →
-  node whose own edit explains the change; `contains`-only steps with every-node
-  subtreeHash-changed for direct, every-node effectiveHash-changed for transitive; edge and
-  path minimized together per category over all qualifying edges, 12.0 byte tie rule;
-  `embeds` reported over `references` when both target the chosen first node); deleted
-  identities forward-mapped, duplicated as deleted+added when reused by a distinct node;
-  exit 0 regardless of differences; `--json`. Satisfies Finding 2 gaps 6–8.
-  Verify: section-9, section-9.3, section-5.6, section-5.4; section-6.6 (manual edits =
-  delete+add) should move.
-
 - [ ] **T25 — workspace mutual exclusion and `--test-hold`.**
   In `src/workspace/` (SPEC 13.5): mutating commands (`rename`, `move`, `review create/
   resolve/split`) are mutually exclusive per workspace — a second concurrent one fails

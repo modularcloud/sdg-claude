@@ -14,6 +14,7 @@ import { COMMAND_PATHS, parseArgv } from "./args.js";
 import { buildCommand } from "./commands/build.js";
 import { coverageCommand } from "./commands/coverage.js";
 import { idsCommand } from "./commands/ids.js";
+import { impactCommand } from "./commands/impact.js";
 import { queryCommand } from "./commands/query.js";
 import { showCommand } from "./commands/show.js";
 import type { CliWriter, CommandContext } from "./io.js";
@@ -57,6 +58,9 @@ const HANDLERS: ReadonlyMap<string, CommandHandler> = new Map(
       case "coverage":
         // SPEC 8.2.
         return [path, coverageCommand];
+      case "impact":
+        // SPEC 9.
+        return [path, impactCommand];
       case "query node":
       case "query nodes":
       case "query edges":
