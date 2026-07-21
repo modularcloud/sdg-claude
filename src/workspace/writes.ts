@@ -274,6 +274,23 @@ export async function writeSourceFile(
 }
 
 /**
+ * Remove a source file at its workspace-relative path (SPEC 6.5: the file
+ * form of `xspec move` relocates the source file, so the origin path ceases
+ * to exist). The occupant is a discovered source — a plain file reached
+ * through real directories (discovery never follows symbolic links, SPEC 7)
+ * — and removal never traverses a symlinked component (SPEC 13.4): a path
+ * whose directory component became a symbolic link is skipped untouched, as
+ * in orphan removal. An absent occupant is a completed removal.
+ */
+export async function removeSourceFile(
+  root: string,
+  rel: string,
+): Promise<void> {
+  if ((await symlinkComponentOf(root, rel)) !== null) return;
+  await fsp.rm(absoluteOf(root, rel), { force: true });
+}
+
+/**
  * Remove a derived file at a recorded path (orphan removal, SPEC 13.3/13.4:
  * a recorded derived file no longer generated is removed via its recorded
  * path). An absent occupant is a completed removal; a symbolic-link

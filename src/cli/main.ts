@@ -15,6 +15,7 @@ import { buildCommand } from "./commands/build.js";
 import { coverageCommand } from "./commands/coverage.js";
 import { idsCommand } from "./commands/ids.js";
 import { impactCommand } from "./commands/impact.js";
+import { moveCommand } from "./commands/move.js";
 import { queryCommand } from "./commands/query.js";
 import { renameCommand } from "./commands/rename.js";
 import { showCommand } from "./commands/show.js";
@@ -73,6 +74,9 @@ const HANDLERS: ReadonlyMap<string, CommandHandler> = new Map(
       case "rename":
         // SPEC 6.4.
         return [path, renameCommand];
+      case "move":
+        // SPEC 6.5.
+        return [path, moveCommand];
       default:
         return [path, notImplemented];
     }

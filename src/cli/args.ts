@@ -302,8 +302,13 @@ function usageError(message: string): ParseResult {
  * mis-decoded bytes and is treated as not valid UTF-8. A lone surrogate
  * (which no UTF-8 decode produces, but an in-process caller could pass) has
  * no UTF-8 encoding and is rejected the same way.
+ *
+ * Exported for `move` (SPEC 6.5): the parser exempts `move`'s positionals —
+ * a destination path that is not valid UTF-8 is one of 6.5's destination
+ * *refusals* (exit 1), not a usage error, so the command classifies its own
+ * arguments with this same predicate.
  */
-function isValidUtf8ArgumentValue(value: string): boolean {
+export function isValidUtf8ArgumentValue(value: string): boolean {
   for (let index = 0; index < value.length; index += 1) {
     const unit = value.charCodeAt(index);
     if (unit === 0xfffd) return false;
@@ -364,16 +369,17 @@ const TABLE = buildTable();
  * to stderr before exiting 2 (12.0).
  */
 export function parseArgv(argv: readonly string[]): ParseResult {
-  // SPEC 12.0: argument values are interpreted as UTF-8; every element of the
-  // vector is an argument value.
-  for (let index = 0; index < argv.length; index += 1) {
-    if (!isValidUtf8ArgumentValue(argv[index]!)) {
-      return usageError(
-        `argument ${String(index + 1)} is not valid UTF-8 — argument values ` +
-          `are interpreted as UTF-8`,
-      );
-    }
-  }
+  // SPEC 12.0: argument values are interpreted as UTF-8, and a value that is
+  // not valid UTF-8 is a usage error. Checked per token below, because the
+  // `move` command's positionals are exempt (SPEC 6.5: a destination path
+  // that is not valid UTF-8 is a destination refusal, exit 1 — the command
+  // classifies it; a non-UTF-8 origin names no discovered source and stays
+  // in the usage-error class through the existence check).
+  const nonUtf8 = (indexInArgv: number): ParseResult =>
+    usageError(
+      `argument ${String(indexInArgv + 1)} is not valid UTF-8 — argument ` +
+        `values are interpreted as UTF-8`,
+    );
 
   if (argv.length === 0) {
     return usageError(
@@ -381,6 +387,9 @@ export function parseArgv(argv: readonly string[]): ParseResult {
     );
   }
   const commandToken = argv[0]!;
+  if (!isValidUtf8ArgumentValue(commandToken)) {
+    return nonUtf8(0);
+  }
   if (commandToken.startsWith("--")) {
     return usageError(
       `expected a command before any flags (expected one of: ` +
@@ -404,6 +413,9 @@ export function parseArgv(argv: readonly string[]): ParseResult {
         `${commandToken}: missing subcommand (expected one of: ` +
           `${subcommandNameList(entry)})`,
       );
+    }
+    if (!isValidUtf8ArgumentValue(subToken)) {
+      return nonUtf8(1);
     }
     const subcommand = entry.get(subToken);
     if (subcommand === undefined) {
@@ -429,11 +441,26 @@ export function parseArgv(argv: readonly string[]): ParseResult {
   let json = false;
   let config: string | undefined;
 
+  // Argv index of a token: `tokens` is argv minus the command (and
+  // subcommand) tokens, so the offset restores the original position for
+  // the non-UTF-8 diagnostics.
+  const tokenOffset = argv.length - tokens.length;
+  // SPEC 6.5: `move`'s positional arguments are exempt from the parse-level
+  // UTF-8 usage check (see `isValidUtf8ArgumentValue`); flags and their
+  // values keep it.
+  const utf8ExemptPositionals = spec.path === "move";
+
   for (let index = 0; index < tokens.length; index += 1) {
     const token = tokens[index]!;
     if (!token.startsWith("--")) {
+      if (!utf8ExemptPositionals && !isValidUtf8ArgumentValue(token)) {
+        return nonUtf8(tokenOffset + index);
+      }
       positionals.push(token);
       continue;
+    }
+    if (!isValidUtf8ArgumentValue(token)) {
+      return nonUtf8(tokenOffset + index);
     }
     const flag = flagSpecs.get(token);
     if (flag === undefined) {
@@ -462,6 +489,9 @@ export function parseArgv(argv: readonly string[]): ParseResult {
       );
     }
     const value = tokens[index]!;
+    if (!isValidUtf8ArgumentValue(value)) {
+      return nonUtf8(tokenOffset + index);
+    }
     if (flag.list !== undefined) {
       // SPEC 12.0: list-valued flags take one comma-separated value; an
       // element outside the flag's set is an invalid flag value.

@@ -44,19 +44,6 @@ signature. The entire pipeline must be built; tasks below are dependency-ordered
 
 ## Tasks
 
-- [ ] **T27 — `xspec move`, file form.**
-  (SPEC 6.5 first form): `move <old-file> <new-file>` relocates the source file; IDs
-  unchanged, identities change only in the file part; rewrite the moved file's own import
-  specifiers and other files' imports of its generated module so references resolve; rewrite
-  all references workspace-wide; journal the full mapping; regenerate as rename does.
-  Refusals/validation (6.5): mirror rename incl. valid-workspace precondition and
-  usage-error class for nonexistent origin; refuse a destination that already exists; refuse
-  a destination path that would not be a valid discovered spec source (no spec group,
-  also-code-group 14.14, contains `#`, non-UTF-8, no `.mdx` → 14.19); refuse import/
-  dependency cycles the move would create. Pure (6.2): no hash changes. Under T25 exclusion.
-  Satisfies Finding 1 gap 6 (6.5 file form).
-  Verify: section-6.5 (file-form tests), section-6.2 residuals.
-
 - [ ] **T28 — `xspec move`, section form.**
   (SPEC 6.5 second form): `move <file>#<id> <target-file>#<new-id>` — extract the section
   subtree with the exact text rules: moved text = the construct's own characters (opening
