@@ -44,21 +44,6 @@ signature. The entire pipeline must be built; tasks below are dependency-ordered
 
 ## Tasks
 
-- [ ] **T25 — workspace mutual exclusion and `--test-hold`.**
-  In `src/workspace/` (SPEC 13.5): mutating commands (`rename`, `move`, `review create/
-  resolve/split`) are mutually exclusive per workspace — a second concurrent one fails
-  promptly with a usage error (exit 2) modifying nothing; exclusivity ends when the holding
-  process terminates, normally or abnormally (a terminated holder never blocks — design the
-  lock accordingly, e.g. liveness-checked, not a bare lockfile); instances on different
-  workspaces never interfere; all other commands run concurrently, last-write-wins, resolved
-  by rebuild. `--test-hold <path>` on every mutating command: immediately after acquiring
-  exclusivity and before modifying anything, create an empty file at the path with exclusive
-  creation (fail if anything, symlink included, exists there → usage error, nothing
-  modified), then proceed only once that file is deleted; no other behavioral change.
-  Satisfies Finding 2 gap 20 (13.5).
-  Verify: typecheck + manual probe with two processes; section-13.5 greens as rename/review
-  land (T26, T33–T34).
-
 - [ ] **T26 — `xspec rename`.**
   In `src/cli/` + `src/core/` + `src/workspace/` (SPEC 6.4): `rename <file> <old-id>
   <new-id>` — rewrite the ID and descendant IDs by prefix replacement; rewrite every
