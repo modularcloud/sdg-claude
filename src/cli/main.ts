@@ -16,6 +16,7 @@ import { coverageCommand } from "./commands/coverage.js";
 import { idsCommand } from "./commands/ids.js";
 import { impactCommand } from "./commands/impact.js";
 import { queryCommand } from "./commands/query.js";
+import { renameCommand } from "./commands/rename.js";
 import { showCommand } from "./commands/show.js";
 import type { CliWriter, CommandContext } from "./io.js";
 import { emitConfigurationErrors } from "./report.js";
@@ -69,6 +70,9 @@ const HANDLERS: ReadonlyMap<string, CommandHandler> = new Map(
       case "query reachable":
         // SPEC 11.
         return [path, queryCommand];
+      case "rename":
+        // SPEC 6.4.
+        return [path, renameCommand];
       default:
         return [path, notImplemented];
     }

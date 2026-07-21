@@ -139,6 +139,12 @@ export interface CodeReference {
 export interface CodeAnalysis {
   /** Workspace-relative `/`-separated path (SPEC 1.5). */
   readonly path: string;
+  /**
+   * The decoded UTF-8 content (SPEC 1.6). Valid, BOM-free UTF-8 re-encodes
+   * to the file's exact bytes, so the recorded reference spans can drive
+   * the minimal in-place rewrites of rename and move (SPEC 6.4, 6.5).
+   */
+  readonly text: string;
   /** Every named code unit in document order (SPEC 4.6). */
   readonly units: readonly CodeUnit[];
   /** Every spec module import declaration, in document order (SPEC 4). */
@@ -353,6 +359,7 @@ class CodeAnalyzer {
     this.walk(this.sourceFile);
     return {
       path: this.path,
+      text: this.sourceFile.text,
       units: this.units,
       imports: this.imports,
       references: [...this.references].sort(

@@ -44,25 +44,6 @@ signature. The entire pipeline must be built; tasks below are dependency-ordered
 
 ## Tasks
 
-- [ ] **T26 — `xspec rename`.**
-  In `src/cli/` + `src/core/` + `src/workspace/` (SPEC 6.4): `rename <file> <old-id>
-  <new-id>` — rewrite the ID and descendant IDs by prefix replacement; rewrite every
-  reference across all configured spec and code sources (`id` attributes, `d` references,
-  `text(...)` references, TS markers) as minimal in-place edits preserving quote style and
-  access form, falling back per 6.4 (dot access for identifier segments, double-quoted
-  computed access otherwise, double-quoted strings); type-only TS references not rewritten;
-  append the mapping to the journal (T11 format; byte-deterministic, 6.1). Validation order
-  (12.0 precedence): nonexistent `<file>`/old ID → usage error exit 2 before source
-  validation, except an old ID inside an unparseable origin file is masked — findings
-  reported, exit 1; then refuse (exit 1) when the workspace fails `build` validation; then
-  validate new ID (valid, differs, no collision, structural rules hold, rewritten references
-  resolve) — failures refuse exit 1. Success finishes by regenerating derived files exactly
-  as `build` does (cannot fail per the precondition). Purity (SPEC 6.2): every hash
-  byte-identical, no change categories against any baseline. Under T25 exclusion.
-  Satisfies Finding 1 gap 6 (6.4).
-  Verify: section-6.4, section-6.2 (rename part), section-6.1; SPEC 15's rename-then-
-  no-impact example via section-15 later.
-
 - [ ] **T27 — `xspec move`, file form.**
   (SPEC 6.5 first form): `move <old-file> <new-file>` relocates the source file; IDs
   unchanged, identities change only in the file part; rewrite the moved file's own import

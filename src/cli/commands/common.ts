@@ -8,6 +8,7 @@
 // one node-report document defined here, so their information content can
 // never drift apart.
 
+import * as path from "node:path";
 import type { JsonObject, JsonValue } from "../../core/canonical-json.js";
 import { canonicalJson } from "../../core/canonical-json.js";
 import type { ByteRange } from "../../core/bytes.js";
@@ -16,7 +17,10 @@ import type {
   RequirementNode,
   WorkspaceGraph,
 } from "../../core/graph.js";
+import type { TestHoldSpec } from "../../workspace/lock.js";
 import type { WorkspaceAnalysis } from "../../workspace/pipeline.js";
+import type { Invocation } from "../args.js";
+import { flagValue } from "../args.js";
 import type { CliWriter } from "../io.js";
 
 /**
@@ -39,6 +43,23 @@ export function usageError(
 export function emitDocument(stdout: CliWriter, document: JsonValue): 0 {
   stdout.write(canonicalJson(document));
   return 0;
+}
+
+/**
+ * The invocation's `--test-hold <path>` value as the workspace layer's hold
+ * spec, or undefined when the flag was not given. SPEC 12.0/13.5: the value
+ * is a filesystem path resolved against the working directory; the verbatim
+ * token is kept for diagnostics (argv tokens only — never resolved paths).
+ */
+export function testHoldSpecOf(
+  invocation: Invocation,
+  cwd: string,
+): TestHoldSpec | undefined {
+  const given = flagValue(invocation, "--test-hold");
+  if (given === undefined) {
+    return undefined;
+  }
+  return { given, absolutePath: path.resolve(cwd, given) };
 }
 
 /** A source range (SPEC 1.7) as JSON data. */

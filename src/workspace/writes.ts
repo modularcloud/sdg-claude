@@ -257,6 +257,23 @@ export async function writeDerivedFile(
 }
 
 /**
+ * Rewrite a source file in place (SPEC 6.4, 6.5: `rename` and `move`
+ * rewrite references across configured spec and code sources). Atomic in
+ * its observable effect (SPEC 13.5), like every product write. The path
+ * holds a discovered source — a plain file — and its rewritten content
+ * replaces it; callers have validated the write path (SPEC 14.22) and run
+ * under workspace exclusivity (SPEC 13.5).
+ */
+export async function writeSourceFile(
+  root: string,
+  rel: string,
+  content: Uint8Array | string,
+): Promise<void> {
+  await ensureWritableParent(root, rel);
+  await replaceWithFile(absoluteOf(root, rel), content);
+}
+
+/**
  * Remove a derived file at a recorded path (orphan removal, SPEC 13.3/13.4:
  * a recorded derived file no longer generated is removed via its recorded
  * path). An absent occupant is a completed removal; a symbolic-link

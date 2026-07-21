@@ -125,6 +125,28 @@ export async function loadJournal(root: string): Promise<LoadedJournal> {
 }
 
 /**
+ * The journal file's raw bytes — null when the path holds no plain file (an
+ * absent journal is empty, SPEC 6.1; a non-plain occupant is never read,
+ * SPEC 13.4, and the caller's validation has already reported it, 14.13).
+ * `rename` and `move` read these to model the journal as it will stand
+ * after their append (SPEC 6.4, 6.5: the post-operation analysis hashes
+ * with the journal including the new entry, SPEC 5.4).
+ */
+export async function readJournalBytes(
+  root: string,
+): Promise<Uint8Array | null> {
+  const absolute = journalAbsolutePath(root);
+  if ((await classifyOccupant(absolute)) !== "file") {
+    return null;
+  }
+  try {
+    return await fsp.readFile(absolute);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Append one entry to the journal as its canonical line (SPEC 6.1:
  * append-only, one entry per line, byte-deterministic; the file comes into
  * existence with the first journaled operation). The write goes through the
