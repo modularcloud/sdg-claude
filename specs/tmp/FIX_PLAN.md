@@ -44,29 +44,6 @@ signature. The entire pipeline must be built; tasks below are dependency-ordered
 
 ## Tasks
 
-- [ ] **T34 — review commands: `next`, `split`, `resolve`.**
-  In `src/cli/` + `src/core/` (SPEC 10.7): `next <name>` — first item in item order needing
-  review (`unresolved`/`invalidated`) and unblocked; when none, report fully resolved, exit
-  0, JSON payload with no item. `next --json` self-contained payload: every scope/context/
-  origin node under current identity and presence, source ranges for present requirement
-  nodes; baseline+current hashes; text per kind — scope: subtree text (subtree-coherence),
-  subtree text (uncovered-requirement), own text (parent-/dependency-/metadata-consistency),
-  none for code-impact scopes; context: own text for ancestor-chain contexts, subtree text
-  otherwise; origin: before/after own text (before from `baseline`, after from current);
-  absent-node text from the most recent graph state containing it among the item's baseline
-  and mutating-subcommand derivations, else absent with no text. `split <name> <item-id>`:
-  decompose a subtree-coherence item with children into per-child subtree-coherence items +
-  the scope root's parent-consistency item blocked by them; existing kind+scope items are
-  reused keeping id/status/state; new items inherit the original's `blockedBy`; blockers of
-  the original now block the whole decomposition; original removed, id never reused;
-  decomposition recorded durably and governing re-derivation; refuse other kinds or childless
-  scope roots. `resolve <name> <item-id> --status updated|no-change|skipped [--note]`: sets
-  status, records current relevant state (T30); works on any unblocked item (re-resolving
-  invalidated/resolved items); refuses blocked items; other status values, unknown
-  session/item = usage error; `--status updated` triggers re-derivation (T31). Satisfies
-  Finding 2 gap 14 (second half).
-  Verify: section-10.7-i, 10.7-ii, 10.4, 10.5, 10.6 — run all six review files and report.
-
 - [ ] **T35 — `xspec check` and policy evaluation.**
   In `src/cli/` + `src/core/` (SPEC 12.2): all build validations without accepting stale
   outputs, never refreshing (13.3), plus: staleness — generated files content-identical to

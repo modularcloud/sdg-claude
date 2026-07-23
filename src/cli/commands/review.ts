@@ -1,5 +1,6 @@
 // The `xspec review` subcommands (SPEC 10.7): `create`, `list`, `status`,
-// `show`, `export`. (`next`, `split`, `resolve` are dispatched separately.)
+// `next`, `show`, `export`. (The mutating `split` and `resolve` live in
+// review-mutate.ts.)
 //
 // Outcome precedence, per subcommand:
 //
@@ -24,11 +25,14 @@
 // read-time invalidation, SPEC 10.7); corrupt sessions by name as corrupt
 // in place of those fields; exit 1 iff any is corrupt.
 //
-// `status`, `show`, `export` (reads) — the shared open flow of
+// `status`, `next`, `show`, `export` (reads) — the shared open flow of
 // review-session.ts (name validity, load, recorded-baseline resolution,
 // refresh), then the read-time view (SPEC 10.4: invalidation applied,
-// never persisted). `export` emits the entire session as a single JSON
-// document — its only output form, with or without `--json` (SPEC 10.7).
+// never persisted). `next` returns the first item in item order that needs
+// review and is unblocked, or reports the session fully resolved (exit 0,
+// the JSON payload with no item). `export` emits the entire session as a
+// single JSON document — its only output form, with or without `--json`
+// (SPEC 10.7).
 
 import type { JsonObject } from "../../core/canonical-json.js";
 import type { ExitCode } from "../../core/findings.js";
@@ -41,6 +45,7 @@ import {
   sessionFilePath,
   sessionNameProblem,
   sessionStrategy,
+  statusNeedsReview,
 } from "../../core/review.js";
 import {
   deriveSessionItems,
@@ -361,6 +366,61 @@ export async function reviewStatusCommand(
   }
   out += `totals: ${renderCountsHuman(totals)}\n`;
   context.stdout.write(out);
+  return 0;
+}
+
+// ---------------------------------------------------------------------------
+// `review next` (SPEC 10.7)
+// ---------------------------------------------------------------------------
+
+/** The `review next <name> [--json]` handler (SPEC 10.7). */
+export async function reviewNextCommand(
+  invocation: Invocation,
+  context: CommandContext,
+): Promise<ExitCode> {
+  const name = invocation.positionals[0];
+  if (name === undefined) {
+    // Unreachable: the parser enforces the positional (SPEC 10.7).
+    throw new Error("xspec internal error: review next without <name>");
+  }
+  const opened = await openSessionForRead(name, invocation, context);
+  if (!opened.ok) {
+    return opened.exit;
+  }
+  const view = opened.view;
+  // SPEC 10.7: the first item in the session's item order that needs
+  // review (`unresolved` or `invalidated`, 10.3 — read-time invalidation
+  // applied, 10.4) and is unblocked (10.3, over the effective statuses).
+  const next = view.ordered.find(
+    (item) =>
+      statusNeedsReview(view.statuses.get(item.id) ?? item.status) &&
+      !(view.blocked.get(item.id) ?? false),
+  );
+  if (next === undefined) {
+    // SPEC 10.7: when no item qualifies, every item is resolved — with
+    // acyclic blockedBy a minimal needing-review item is always unblocked,
+    // so no other case exists. Exit 0; the session is reported fully
+    // resolved in both forms (a session with no items reports the same),
+    // and the JSON payload contains no item.
+    if (invocation.json) {
+      emitDocument(context.stdout, { fullyResolved: true });
+    } else {
+      context.stdout.write(
+        `review session '${name}' is fully resolved: no item needs review\n`,
+      );
+    }
+    return 0;
+  }
+  if (invocation.json) {
+    // SPEC 10.7: the self-contained payload — review-session.ts fixes it
+    // once, so `next --json`, `show`, and `export` can never disagree.
+    emitDocument(context.stdout, {
+      fullyResolved: false,
+      item: itemDocument(view, next),
+    });
+  } else {
+    context.stdout.write(renderItemHuman(view, next));
+  }
   return 0;
 }
 

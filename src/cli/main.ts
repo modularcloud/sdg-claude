@@ -22,9 +22,14 @@ import {
   reviewCreateCommand,
   reviewExportCommand,
   reviewListCommand,
+  reviewNextCommand,
   reviewShowCommand,
   reviewStatusCommand,
 } from "./commands/review.js";
+import {
+  reviewResolveCommand,
+  reviewSplitCommand,
+} from "./commands/review-mutate.js";
 import { showCommand } from "./commands/show.js";
 import type { CliWriter, CommandContext } from "./io.js";
 import { emitConfigurationErrors } from "./report.js";
@@ -87,9 +92,18 @@ const HANDLERS: ReadonlyMap<string, CommandHandler> = new Map(
       case "review status":
         // SPEC 10.7.
         return [path, reviewStatusCommand];
+      case "review next":
+        // SPEC 10.7.
+        return [path, reviewNextCommand];
       case "review show":
         // SPEC 10.7.
         return [path, reviewShowCommand];
+      case "review split":
+        // SPEC 10.7.
+        return [path, reviewSplitCommand];
+      case "review resolve":
+        // SPEC 10.7.
+        return [path, reviewResolveCommand];
       case "review export":
         // SPEC 10.7.
         return [path, reviewExportCommand];

@@ -24,6 +24,9 @@
 //   resolving nodes through their per-side identities so an identity
 //   reintroduced by a distinct node (SPEC 5.4) never leaks the wrong
 //   side's values;
+// - realizes the `split` decomposition (SPEC 10.7,
+//   `splitItemDecomposition`) and `resolve`'s status/state update with its
+//   `updated`-triggered re-derivation (SPEC 10.5, `resolveSessionItem`);
 // - derives the generator-assigned current context sets reads feed to
 //   read-time invalidation (SPEC 10.4, `currentContextSets`);
 // - orders items per the total order of SPEC 10.5 (`sortItemsPathBlocks`)
@@ -53,7 +56,9 @@ import type {
   RecordedState,
   RecordedTexts,
   RecordedTextTable,
+  ResolveStatus,
   ReviewItem,
+  ReviewSession,
 } from "./review.js";
 import { allocateItemId, kindScopesCodeLocation } from "./review.js";
 import type { ReviewStateInputs } from "./review-state.js";
@@ -641,6 +646,57 @@ function derivedTextTable(
 }
 
 // ---------------------------------------------------------------------------
+// New-item construction (shared by the merge and `split`)
+// ---------------------------------------------------------------------------
+
+/**
+ * One new session item from a generated item (SPEC 10.2): status
+ * `unresolved`, `current` computed against the current graph exactly as
+ * read-time invalidation recomputes it (so a freshly created item is never
+ * born invalidated), `baseline` against the recorded-baseline side — or the
+ * current graph's values at this moment for a session without one — and the
+ * SPEC 10.7 text snapshots. `blockedBy` is the caller's: resolved blocker
+ * references plus, for a `split`'s newly created decomposition items, the
+ * inherited set (SPEC 10.7).
+ */
+function newItemFromGenerated(
+  generated: GeneratedItem,
+  id: string,
+  blockedBy: readonly string[],
+  current: CurrentDerivationSide,
+  baseline: BaselineDerivationSide | undefined,
+): ReviewItem {
+  const currentState = computeRecordedState(
+    {
+      kind: generated.kind,
+      scope: generated.scope.identity,
+      context: generated.context.map((node) => node.identity),
+      origin: generated.origin.map((node) => node.identity),
+    },
+    reviewStateInputs(current),
+  );
+  return {
+    id,
+    kind: generated.kind,
+    scope: generated.scope.identity,
+    context: generated.context.map((node) => node.identity),
+    reason: generated.reason,
+    origin: generated.origin.map((node) => node.identity),
+    // SPEC 10.2: `baseline` is fixed at entry — recorded-baseline values in
+    // a baseline session, current values without one.
+    baseline:
+      baseline === undefined
+        ? currentState
+        : computeBaselineRecordedState(generated, baseline),
+    current: currentState,
+    status: "unresolved",
+    blockedBy,
+    baselineTexts: baselineTextTable(generated, baseline, current),
+    derivedTexts: derivedTextTable(generated, current, {}),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // The merge (SPEC 10.5 re-derivation rules; `create` merges into nothing)
 // ---------------------------------------------------------------------------
 
@@ -700,7 +756,6 @@ export function deriveSessionItems(
   args: DeriveSessionItemsArgs,
 ): DerivedSessionItems {
   const { existing, generated, current, baseline } = args;
-  const stateInputs = reviewStateInputs(current);
 
   const existingByKey = new Map<string, ReviewItem>();
   for (const item of existing) {
@@ -770,34 +825,16 @@ export function deriveSessionItems(
         ),
       });
     } else {
-      const currentState = computeRecordedState(
-        {
-          kind: item.kind,
-          scope: item.scope.identity,
-          context: item.context.map((node) => node.identity),
-          origin: item.origin.map((node) => node.identity),
-        },
-        stateInputs,
+      mergedByKey.set(
+        key,
+        newItemFromGenerated(
+          item,
+          idByKey.get(key) as string,
+          blockedBy,
+          current,
+          baseline,
+        ),
       );
-      mergedByKey.set(key, {
-        id: idByKey.get(key) as string,
-        kind: item.kind,
-        scope: item.scope.identity,
-        context: item.context.map((node) => node.identity),
-        reason: item.reason,
-        origin: item.origin.map((node) => node.identity),
-        // SPEC 10.2: `baseline` is fixed at entry — recorded-baseline
-        // values in a baseline session, current values without one.
-        baseline:
-          baseline === undefined
-            ? currentState
-            : computeBaselineRecordedState(item, baseline),
-        current: currentState,
-        status: "unresolved",
-        blockedBy,
-        baselineTexts: baselineTextTable(item, baseline, current),
-        derivedTexts: derivedTextTable(item, current, {}),
-      });
     }
   }
 
@@ -819,6 +856,284 @@ export function deriveSessionItems(
     if (merged !== undefined) items.push(merged);
   }
   return { items, nextItemId };
+}
+
+// ---------------------------------------------------------------------------
+// The `split` decomposition (SPEC 10.7)
+// ---------------------------------------------------------------------------
+
+/** The inputs of `splitItemDecomposition`. */
+export interface SplitDecompositionArgs {
+  /**
+   * The session, mapped forward to current spellings (review-state.ts
+   * `mapSessionIdentitiesForward`) — the mutating subcommands persist
+   * current spellings (src/core/review.ts identity policy).
+   */
+  readonly session: ReviewSession;
+  /** The item to decompose — an item of `session.items` (caller-resolved;
+   * an unknown item id is the caller's usage error, SPEC 10.7, 12.0). */
+  readonly original: ReviewItem;
+  /** The session strategy's decomposition content (SPEC 10.7). */
+  readonly contentSource: DecompositionContentSource;
+  readonly current: CurrentDerivationSide;
+  /** The recorded-baseline side; omitted for `audit`/`coverage` sessions
+   * (SPEC 10.2: their `baseline` is the entry-moment current state). */
+  readonly baseline?: BaselineDerivationSide;
+}
+
+/** The split outcome: the new session value, or the SPEC 10.7 refusal. */
+export type SplitDecompositionResult =
+  | {
+      readonly ok: true;
+      readonly session: ReviewSession;
+      /** The decomposition's item ids — reused and newly created alike —
+       * in expansion order (SPEC 10.7: "all items of the decomposition"). */
+      readonly itemIds: readonly string[];
+    }
+  | {
+      /** SPEC 10.7: `split` on an item of any other kind, or on a
+       * `subtree-coherence` item whose scope root has no children, is
+       * refused. */
+      readonly ok: false;
+      readonly refusal: string;
+    };
+
+/**
+ * SPEC 10.7 `split`: decompose a `subtree-coherence` item whose scope root
+ * has children into one `subtree-coherence` item per current child subtree
+ * plus one `parent-consistency` item for the scope root's own text — the
+ * strategy's decomposition content fixes each item's context, origin, and
+ * reason ("its context the child's ancestor chain, as in 10.5 and 10.6"),
+ * and a child whose kind and scope node are themselves recorded as
+ * decomposed is spliced recursively (SPEC 10.5). An item of the
+ * decomposition whose kind and scope node already exist in the session is
+ * not created: the existing item takes its place, keeping its `id`,
+ * status, and recorded state — untouched entirely. Newly created
+ * decomposition items enter `unresolved` with current state and
+ * additionally inherit the original's `blockedBy`; every item that was
+ * blocked by the original becomes blocked by all items of the
+ * decomposition; the original is removed and its id never reused (the id
+ * counter only advances); the decomposition is recorded durably and
+ * governs re-derivation (SPEC 10.5, 10.7).
+ */
+export function splitItemDecomposition(
+  args: SplitDecompositionArgs,
+): SplitDecompositionResult {
+  const { session, original, contentSource, current, baseline } = args;
+
+  // SPEC 10.7: `split` on an item of any other kind is refused.
+  if (original.kind !== "subtree-coherence") {
+    return {
+      ok: false,
+      refusal:
+        `item '${original.id}' is a ${original.kind} item — \`split\` ` +
+        `decomposes only a subtree-coherence item whose scope root has ` +
+        `children (SPEC 10.7)`,
+    };
+  }
+  // SPEC 10.7: a childless scope root is refused. The decomposition is per
+  // *current* child subtree (SPEC 10.5), so an absent scope root — with no
+  // current children — is childless here.
+  const scopeNode = current.graph.requirementNode(original.scope);
+  const children =
+    scopeNode === undefined ? [] : current.graph.childrenOf(scopeNode);
+  if (children.length === 0) {
+    return {
+      ok: false,
+      refusal:
+        `the scope root ${original.scope} of item '${original.id}' has no ` +
+        `children in the current graph — \`split\` on a subtree-coherence ` +
+        `item whose scope root has no children is refused (SPEC 10.7)`,
+    };
+  }
+
+  // The decomposition's items: the original, expanded under the recorded
+  // decompositions plus this new one — a decomposed child is spliced
+  // recursively, and blocker references to decomposed items are rewritten
+  // to their decompositions' items (SPEC 10.5, 10.7).
+  const decomposedScopes = [
+    ...session.decompositions.map((decomposition) => decomposition.scope),
+    original.scope,
+  ];
+  const expansion = expandDecompositions(
+    [contentSource.subtreeCoherenceItem(original.scope)],
+    decomposedScopes,
+    current.graph,
+    contentSource,
+  );
+
+  // SPEC 10.7: an item of the decomposition whose kind and scope node
+  // already exist in the session is not created — the existing item takes
+  // its place. New items allocate fresh ids in expansion order; the
+  // removed original's id is never reused (the counter only advances).
+  const existingByKey = new Map<string, ReviewItem>();
+  for (const item of session.items) {
+    if (item.id === original.id) continue;
+    existingByKey.set(kindScopeKey(item.kind, item.scope), item);
+  }
+  let nextItemId = session.nextItemId;
+  const idByKey = new Map<string, string>();
+  const newByKey = new Map<string, GeneratedItem>();
+  for (const generated of expansion) {
+    const key = kindScopeKey(generated.kind, generated.scope.identity);
+    const existing = existingByKey.get(key);
+    if (existing !== undefined) {
+      idByKey.set(key, existing.id);
+    } else {
+      const allocation = allocateItemId(nextItemId);
+      nextItemId = allocation.nextItemId;
+      idByKey.set(key, allocation.id);
+      newByKey.set(key, generated);
+    }
+  }
+
+  // A blocker reference resolves against the decomposition's items and the
+  // session's items. SPEC 10.1 lets `blockedBy` name only item ids present
+  // in the session, so a reference to an item that never entered it (a new
+  // child's own children, itemless until a re-derivation) is dropped —
+  // re-derivation recomputes every blocker per the strategy's rules
+  // (SPEC 10.5).
+  const idOfRef = (ref: GeneratedBlockerRef): string | undefined => {
+    const key = kindScopeKey(ref.kind, ref.scope);
+    return idByKey.get(key) ?? existingByKey.get(key)?.id;
+  };
+
+  // SPEC 10.7: newly created decomposition items — per-child items and the
+  // scope root's parent-consistency item alike — additionally inherit the
+  // original's `blockedBy`.
+  const newItems: ReviewItem[] = [];
+  for (const generated of expansion) {
+    const key = kindScopeKey(generated.kind, generated.scope.identity);
+    if (!newByKey.has(key)) continue;
+    const blockedBy: string[] = [];
+    for (const ref of generated.blockedBy) {
+      const id = idOfRef(ref);
+      if (id !== undefined && !blockedBy.includes(id)) blockedBy.push(id);
+    }
+    for (const inherited of original.blockedBy) {
+      if (!blockedBy.includes(inherited)) blockedBy.push(inherited);
+    }
+    newItems.push(
+      newItemFromGenerated(
+        generated,
+        idByKey.get(key) as string,
+        blockedBy,
+        current,
+        baseline,
+      ),
+    );
+  }
+
+  const itemIds = expansion.map(
+    (generated) =>
+      idByKey.get(
+        kindScopeKey(generated.kind, generated.scope.identity),
+      ) as string,
+  );
+
+  // SPEC 10.7: the original is removed; every item that was blocked by it
+  // becomes blocked by all items of the decomposition. Reused items are
+  // otherwise untouched — id, status, recorded state, and everything else
+  // kept.
+  const items: ReviewItem[] = [];
+  for (const item of session.items) {
+    if (item.id === original.id) continue;
+    if (!item.blockedBy.includes(original.id)) {
+      items.push(item);
+      continue;
+    }
+    const blockedBy: string[] = [];
+    for (const blocker of item.blockedBy) {
+      if (blocker !== original.id) {
+        if (!blockedBy.includes(blocker)) blockedBy.push(blocker);
+        continue;
+      }
+      for (const id of itemIds) {
+        // SPEC 10.1: no item blocks itself — split produces only acyclic
+        // blocking.
+        if (id !== item.id && !blockedBy.includes(id)) blockedBy.push(id);
+      }
+    }
+    items.push({ ...item, blockedBy });
+  }
+  items.push(...newItems);
+
+  // SPEC 10.7: the decomposition — the original's kind and scope node — is
+  // recorded durably in the session and governs re-derivation (10.5).
+  return {
+    ok: true,
+    session: {
+      ...session,
+      decompositions: [
+        ...session.decompositions,
+        { kind: "subtree-coherence", scope: original.scope },
+      ],
+      nextItemId,
+      items,
+    },
+    itemIds,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// `resolve` (SPEC 10.7): status, recorded state, and re-derivation
+// ---------------------------------------------------------------------------
+
+/** The inputs of `resolveSessionItem`. */
+export interface ResolveItemArgs {
+  /** The session, mapped forward to current spellings (review-state.ts). */
+  readonly session: ReviewSession;
+  /** The id of an item of `session.items` — caller-resolved and unblocked
+   * (SPEC 10.7: resolving a blocked item is refused before this runs). */
+  readonly itemId: string;
+  /** SPEC 10.7: `--status` accepts `updated`, `no-change`, and `skipped`. */
+  readonly status: ResolveStatus;
+  /** SPEC 10.2: the optional `--note` text of this resolve — the stored
+   * note is rewritten at each resolve, cleared when none is given. */
+  readonly note?: string;
+  /** The decomposition-expanded generator run (`expandDecompositions`) —
+   * the generated set an `updated` resolve's re-derivation merges
+   * (SPEC 10.5, 10.7). */
+  readonly expanded: readonly GeneratedItem[];
+  readonly current: CurrentDerivationSide;
+  /** The recorded-baseline side; omitted for `audit`/`coverage` sessions. */
+  readonly baseline?: BaselineDerivationSide;
+}
+
+/**
+ * SPEC 10.7 `resolve`: set the item's status and record the current
+ * relevant state (10.4) — `current` is rewritten at this resolve (10.2) —
+ * on any unblocked item regardless of current status, so an `invalidated`
+ * or previously resolved item is re-resolved the same way. When the status
+ * is `updated`, the session is re-derived at resolve time (SPEC 10.5, for
+ * every strategy): the expanded generation is merged under the
+ * re-derivation rules — the just-resolved item, matched by kind and scope
+ * node, keeps its new status and recorded state through the merge.
+ * Resolving with `no-change` or `skipped` never re-derives.
+ */
+export function resolveSessionItem(args: ResolveItemArgs): ReviewSession {
+  const { session, itemId, status, note, expanded, current, baseline } = args;
+  const stateInputs = reviewStateInputs(current);
+  const items = session.items.map((item): ReviewItem => {
+    if (item.id !== itemId) return item;
+    return {
+      ...item,
+      status,
+      note,
+      current: computeRecordedState(item, stateInputs),
+    };
+  });
+  if (status !== "updated") {
+    return { ...session, items };
+  }
+  const derived = deriveSessionItems({
+    existing: items,
+    nextItemId: session.nextItemId,
+    generated: expanded,
+    current,
+    baseline,
+  });
+  return { ...session, nextItemId: derived.nextItemId, items: derived.items };
 }
 
 // ---------------------------------------------------------------------------
