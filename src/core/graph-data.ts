@@ -50,6 +50,7 @@ import type { JsonValue } from "./canonical-json.js";
 import { canonicalJson } from "./canonical-json.js";
 import type { GraphEdge, GraphEdgeKind, WorkspaceGraph } from "./graph.js";
 import type { NodeHashes } from "./hashes.js";
+import type { WorkspaceTextModel } from "./text-model.js";
 
 /** SPEC 13.3/13.4: the graph-data file's workspace-relative path. */
 export const GRAPH_DATA_PATH = ".xspec/graph.json";
@@ -59,7 +60,48 @@ export const GRAPH_DATA_PATH = ".xspec/graph.json";
  * malformed (parse yields null), so it reads as not matching the current
  * sources and configuration and is refreshed or rebuilt (SPEC 13.3).
  */
-const GRAPH_DATA_VERSION = 1;
+const GRAPH_DATA_VERSION = 2;
+
+/** One recorded derivation input: a discovered source and its fingerprint. */
+export interface StoredSourceInput {
+  /** Workspace-relative `/`-separated path (SPEC 1.5). */
+  readonly path: string;
+  /** SHA-256 (hex) of the source's exact bytes. */
+  readonly hash: string;
+}
+
+/**
+ * The recorded derivation inputs (SPEC 13.3). The snapshot is a pure
+ * function of the current sources, configuration, and journal (SPEC 12.0
+ * determinism), so these fingerprints — the configuration file's content
+ * hash with its parsed form, the journal's content hash, and every
+ * discovered source's content hash — certify the stored snapshot for
+ * byte-identical current inputs. The store-backed read fast path
+ * (workspace/fast-read.ts) answers from a store whose recorded inputs all
+ * match without re-deriving; any mismatch falls back to the full pipeline,
+ * whose compare-and-refresh behavior is unchanged.
+ */
+export interface StoredInputs {
+  /** SHA-256 (hex) of the configuration file's exact bytes. */
+  readonly configHash: string;
+  /**
+   * The parsed configuration's plain form (core/config-data.ts) — the
+   * recorded parse the fast path recovers instead of re-parsing.
+   */
+  readonly config: JsonValue;
+  /**
+   * SHA-256 (hex) of the journal file's exact bytes — null when the
+   * journal is absent (an empty journal, SPEC 6.1). The journal is a
+   * derivation input (SPEC 5.4).
+   */
+  readonly journalHash: string | null;
+  /**
+   * Every discovered source with its content fingerprint, in byte order of
+   * path (SPEC 12.0). The discovered set itself is part of the record: a
+   * current discovery yielding any other path set is a mismatch.
+   */
+  readonly sources: readonly StoredSourceInput[];
+}
 
 /** One stored requirement node (SPEC 13.3, 5.1). */
 export interface StoredRequirementNode {
@@ -77,6 +119,10 @@ export interface StoredRequirementNode {
   readonly tags: readonly string[];
   /** SPEC 5.5: the node's four hashes. */
   readonly hashes: NodeHashes;
+  /** SPEC 1.6: the node's own text, fully expanded (SPEC 11, 12.4). */
+  readonly ownText: string;
+  /** SPEC 1.6: the node's subtree text, fully expanded (SPEC 11, 12.4). */
+  readonly subtreeText: string;
 }
 
 /** One stored code location (SPEC 13.3, 5.1, 4.6). */
@@ -104,6 +150,8 @@ export interface GraphSnapshot {
 /** The complete stored graph data (SPEC 13.3). */
 export interface GraphData {
   readonly snapshot: GraphSnapshot;
+  /** The recorded derivation inputs of the snapshot (see `StoredInputs`). */
+  readonly inputs: StoredInputs;
   /**
    * SPEC 13.3/13.4: the workspace-relative paths of the derived files most
    * recently generated — generated TypeScript modules and companions
@@ -117,14 +165,18 @@ export interface GraphData {
 /**
  * Derive the storable snapshot from the assembled graph and its computed
  * hashes (SPEC 13.3): every requirement node with its source range,
- * coverage attribute, tags, and four hashes; every code location; every
- * edge. Deterministic: everything is emitted in the graph's own fixed
- * order (SPEC 12.0). `hashes` must be the computation over this same graph
- * (./hashes.ts covers every requirement node).
+ * coverage attribute, tags, four hashes, and fully expanded own and
+ * subtree text (SPEC 1.6 — recorded so the store answers the node report
+ * of SPEC 11/12.4 without re-deriving); every code location; every edge.
+ * Deterministic: everything is emitted in the graph's own fixed order
+ * (SPEC 12.0). `hashes` must be the computation over this same graph
+ * (./hashes.ts covers every requirement node), `textModel` the model over
+ * the same documents.
  */
 export function buildGraphSnapshot(
   graph: WorkspaceGraph,
   hashes: ReadonlyMap<string, NodeHashes>,
+  textModel: WorkspaceTextModel,
 ): GraphSnapshot {
   const requirements = graph.requirementNodes.map(
     (node): StoredRequirementNode => {
@@ -142,6 +194,8 @@ export function buildGraphSnapshot(
         coverage: node.section.coverage,
         tags: node.section.tags,
         hashes: nodeHashes,
+        ownText: textModel.ownText(node.document, node.section),
+        subtreeText: textModel.subtreeText(node.document, node.section),
       };
     },
   );
@@ -178,7 +232,11 @@ export function refreshedGraphData(
 ): GraphData {
   return stored === null
     ? build
-    : { snapshot: build.snapshot, derivedFiles: stored.derivedFiles };
+    : {
+        snapshot: build.snapshot,
+        inputs: build.inputs,
+        derivedFiles: stored.derivedFiles,
+      };
 }
 
 /**
@@ -251,6 +309,20 @@ function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
 export function serializeGraphData(data: GraphData): string {
   const value: JsonValue = {
     version: GRAPH_DATA_VERSION,
+    inputs: {
+      configHash: data.inputs.configHash,
+      config: data.inputs.config,
+      journalHash: data.inputs.journalHash,
+      // Byte order of path (SPEC 12.0); collection order is discovery
+      // order, already byte-ordered — sorting keeps the serialization
+      // order-independent of its inputs.
+      sources: [...data.inputs.sources]
+        .sort((a, b) => compareBytes(a.path, b.path))
+        .map((source): JsonValue => ({
+          path: source.path,
+          hash: source.hash,
+        })),
+    },
     derivedFiles: [...new Set(data.derivedFiles)].sort(compareBytes),
     requirements: data.snapshot.requirements.map(requirementToJson),
     codeLocations: data.snapshot.codeLocations.map((location): JsonValue => ({
@@ -280,6 +352,8 @@ function requirementToJson(node: StoredRequirementNode): JsonValue {
       effectiveHash: node.hashes.effectiveHash,
       metadataHash: node.hashes.metadataHash,
     },
+    ownText: node.ownText,
+    subtreeText: node.subtreeText,
   };
 }
 
@@ -314,11 +388,13 @@ export function parseGraphData(text: string): GraphData | null {
   if (!isRecord(raw) || raw["version"] !== GRAPH_DATA_VERSION) {
     return null;
   }
+  const inputs = parseInputs(raw["inputs"]);
   const derivedFiles = parseStringArray(raw["derivedFiles"]);
   const requirements = parseArray(raw["requirements"], parseRequirement);
   const codeLocations = parseArray(raw["codeLocations"], parseCodeLocation);
   const edges = parseArray(raw["edges"], parseEdge);
   if (
+    inputs === null ||
     derivedFiles === null ||
     requirements === null ||
     codeLocations === null ||
@@ -328,7 +404,46 @@ export function parseGraphData(text: string): GraphData | null {
   }
   return {
     snapshot: { requirements, codeLocations, edges },
+    inputs,
     derivedFiles,
+  };
+}
+
+function parseSourceInput(value: unknown): StoredSourceInput | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const path = value["path"];
+  const hash = value["hash"];
+  if (typeof path !== "string" || typeof hash !== "string") {
+    return null;
+  }
+  return { path, hash };
+}
+
+function parseInputs(value: unknown): StoredInputs | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const configHash = value["configHash"];
+  const journalHash = value["journalHash"];
+  const sources = parseArray(value["sources"], parseSourceInput);
+  if (
+    typeof configHash !== "string" ||
+    (journalHash !== null && typeof journalHash !== "string") ||
+    sources === null ||
+    !("config" in value)
+  ) {
+    return null;
+  }
+  // The recorded parse (`config`) is structurally validated at use
+  // (core/config-data.ts `configurationFromStored`); here it must only be
+  // JSON data, which a parsed JSON document's field always is.
+  return {
+    configHash,
+    config: value["config"] as JsonValue,
+    journalHash,
+    sources,
   };
 }
 
@@ -414,10 +529,28 @@ function parseRequirement(value: unknown): StoredRequirementNode | null {
   const range = parseRange(value["range"]);
   const tags = parseStringArray(value["tags"]);
   const hashes = parseHashes(value["hashes"]);
-  if (range === null || tags === null || hashes === null) {
+  const ownText = value["ownText"];
+  const subtreeText = value["subtreeText"];
+  if (
+    range === null ||
+    tags === null ||
+    hashes === null ||
+    typeof ownText !== "string" ||
+    typeof subtreeText !== "string"
+  ) {
     return null;
   }
-  return { identity, path, id, range, coverage, tags, hashes };
+  return {
+    identity,
+    path,
+    id,
+    range,
+    coverage,
+    tags,
+    hashes,
+    ownText,
+    subtreeText,
+  };
 }
 
 function parseCodeLocation(value: unknown): StoredCodeLocation | null {

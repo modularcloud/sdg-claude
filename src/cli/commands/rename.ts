@@ -59,6 +59,7 @@ import type { WorkspaceAnalysis } from "../../workspace/pipeline.js";
 import {
   analyzeWorkspace,
   analyzeWorkspaceContent,
+  workspaceInputsOf,
 } from "../../workspace/pipeline.js";
 import {
   symlinkWritePathFindings,
@@ -265,6 +266,10 @@ async function runRename(
     rewritten.textModel,
     rewritten.hashes,
     stored.data,
+    // SPEC 13.3/6.4: the regenerated store records the rewritten workspace's
+    // inputs — the rewritten source bytes and the journal as it will stand
+    // after the append (reanalyzeRewritten models exactly those bytes).
+    workspaceInputsOf(workspace, rewritten),
   );
 
   // SPEC 14.22: validate the complete write set — rewritten sources, the

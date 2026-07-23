@@ -34,3 +34,15 @@ export function hashComponents(
   }
   return hash.digest("hex");
 }
+
+/**
+ * SHA-256, hex-encoded, of one exact byte sequence (no framing — a single
+ * whole input needs none). Content fingerprints for the graph data's
+ * recorded derivation inputs (SPEC 13.3; IMPLEMENTATION "Hashing"):
+ * byte-identical inputs derive byte-identical graph data (SPEC 12.0), so a
+ * stored fingerprint matching the current bytes certifies the recorded
+ * derivation for them.
+ */
+export function sha256Hex(bytes: Uint8Array): string {
+  return createHash("sha256").update(bytes).digest("hex");
+}

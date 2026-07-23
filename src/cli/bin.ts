@@ -3,8 +3,21 @@
 // `(argv, cwd, stdout, stderr) → exit code` to the process (IMPLEMENTATION
 // Architecture). It sets `process.exitCode` rather than calling
 // `process.exit()`, so pending stream writes flush before the process exits.
+//
+// The on-disk V8 compile cache (node:module `enableCompileCache`) is
+// enabled before any product module loads — `main.js` is imported
+// dynamically so the whole module graph compiles through the cache. The
+// cache changes no observable behavior (SPEC 12.0: every output is a
+// function of the workspace bytes, never of timing) and lives outside the
+// workspace (Node's default cache directory); it only removes repeated
+// parse/compile cost from every CLI invocation. Best-effort by design:
+// where the cache directory is unusable, Node silently runs without it.
 
-import { main } from "./main.js";
+import { enableCompileCache } from "node:module";
+
+enableCompileCache();
+
+const { main } = await import("./main.js");
 
 try {
   process.exitCode = await main(

@@ -6,32 +6,23 @@
 // success, 1 findings, 2 usage and configuration errors; reports are
 // standard-output content, usage and configuration error messages and all
 // other diagnostic text standard-error content.
+//
+// Command modules load on demand (dynamic import per dispatch), and the
+// configuration parser (workspace/config.ts, on the TypeScript compiler)
+// loads only when a command actually re-parses: `query` first tries the
+// store-backed fast path (commands/query-fast.ts), which answers from
+// stored graph data whose recorded derivation inputs match the current
+// workspace bytes (SPEC 13.3; workspace/fast-read.ts) — identical bytes
+// parse and derive identically (SPEC 12.0), so the recorded parse
+// substitutes for re-parsing. Every other command — and any `query` whose
+// store does not verify — takes the full path: parse the configuration,
+// then dispatch, exactly as before.
 
 import type { ExitCode } from "../core/findings.js";
-import { loadWorkspace } from "../workspace/config.js";
+import { locateWorkspace } from "../workspace/locate.js";
 import type { Invocation } from "./args.js";
 import { COMMAND_PATHS, parseArgv } from "./args.js";
-import { buildCommand } from "./commands/build.js";
-import { checkCommand } from "./commands/check.js";
-import { coverageCommand } from "./commands/coverage.js";
-import { idsCommand } from "./commands/ids.js";
-import { impactCommand } from "./commands/impact.js";
-import { moveCommand } from "./commands/move.js";
-import { queryCommand } from "./commands/query.js";
-import { renameCommand } from "./commands/rename.js";
-import {
-  reviewCreateCommand,
-  reviewExportCommand,
-  reviewListCommand,
-  reviewNextCommand,
-  reviewShowCommand,
-  reviewStatusCommand,
-} from "./commands/review.js";
-import {
-  reviewResolveCommand,
-  reviewSplitCommand,
-} from "./commands/review-mutate.js";
-import { showCommand } from "./commands/show.js";
+import { tryFastQuery } from "./commands/query-fast.js";
 import type { CliWriter, CommandContext } from "./io.js";
 import { emitConfigurationErrors } from "./report.js";
 
@@ -41,28 +32,49 @@ export type CommandHandler = (
   context: CommandContext,
 ) => Promise<ExitCode>;
 
-/** The dispatch table: one handler per SPEC 12.5 command path. */
-const HANDLERS: ReadonlyMap<string, CommandHandler> = new Map(
-  COMMAND_PATHS.map((path): [string, CommandHandler] => {
+/**
+ * The dispatch table: one lazily imported handler per SPEC 12.5 command
+ * path, so an invocation loads only its own command's implementation.
+ */
+const HANDLERS: ReadonlyMap<string, () => Promise<CommandHandler>> = new Map(
+  COMMAND_PATHS.map((path): [string, () => Promise<CommandHandler>] => {
     switch (path) {
       case "build":
         // SPEC 12.1.
-        return [path, buildCommand];
+        return [
+          path,
+          async () => (await import("./commands/build.js")).buildCommand,
+        ];
       case "check":
         // SPEC 12.2.
-        return [path, checkCommand];
+        return [
+          path,
+          async () => (await import("./commands/check.js")).checkCommand,
+        ];
       case "ids":
         // SPEC 12.3.
-        return [path, idsCommand];
+        return [
+          path,
+          async () => (await import("./commands/ids.js")).idsCommand,
+        ];
       case "show":
         // SPEC 12.4.
-        return [path, showCommand];
+        return [
+          path,
+          async () => (await import("./commands/show.js")).showCommand,
+        ];
       case "coverage":
         // SPEC 8.2.
-        return [path, coverageCommand];
+        return [
+          path,
+          async () => (await import("./commands/coverage.js")).coverageCommand,
+        ];
       case "impact":
         // SPEC 9.
-        return [path, impactCommand];
+        return [
+          path,
+          async () => (await import("./commands/impact.js")).impactCommand,
+        ];
       case "query node":
       case "query nodes":
       case "query edges":
@@ -70,37 +82,75 @@ const HANDLERS: ReadonlyMap<string, CommandHandler> = new Map(
       case "query ancestors":
       case "query reachable":
         // SPEC 11.
-        return [path, queryCommand];
+        return [
+          path,
+          async () => (await import("./commands/query.js")).queryCommand,
+        ];
       case "review create":
         // SPEC 10.7.
-        return [path, reviewCreateCommand];
+        return [
+          path,
+          async () =>
+            (await import("./commands/review.js")).reviewCreateCommand,
+        ];
       case "review list":
         // SPEC 10.7.
-        return [path, reviewListCommand];
+        return [
+          path,
+          async () => (await import("./commands/review.js")).reviewListCommand,
+        ];
       case "review status":
         // SPEC 10.7.
-        return [path, reviewStatusCommand];
+        return [
+          path,
+          async () =>
+            (await import("./commands/review.js")).reviewStatusCommand,
+        ];
       case "review next":
         // SPEC 10.7.
-        return [path, reviewNextCommand];
+        return [
+          path,
+          async () => (await import("./commands/review.js")).reviewNextCommand,
+        ];
       case "review show":
         // SPEC 10.7.
-        return [path, reviewShowCommand];
+        return [
+          path,
+          async () => (await import("./commands/review.js")).reviewShowCommand,
+        ];
       case "review split":
         // SPEC 10.7.
-        return [path, reviewSplitCommand];
+        return [
+          path,
+          async () =>
+            (await import("./commands/review-mutate.js")).reviewSplitCommand,
+        ];
       case "review resolve":
         // SPEC 10.7.
-        return [path, reviewResolveCommand];
+        return [
+          path,
+          async () =>
+            (await import("./commands/review-mutate.js")).reviewResolveCommand,
+        ];
       case "review export":
         // SPEC 10.7.
-        return [path, reviewExportCommand];
+        return [
+          path,
+          async () =>
+            (await import("./commands/review.js")).reviewExportCommand,
+        ];
       case "rename":
         // SPEC 6.4.
-        return [path, renameCommand];
+        return [
+          path,
+          async () => (await import("./commands/rename.js")).renameCommand,
+        ];
       case "move":
         // SPEC 6.5.
-        return [path, moveCommand];
+        return [
+          path,
+          async () => (await import("./commands/move.js")).moveCommand,
+        ];
       default:
         // Unreachable: every SPEC 12.5 command path is cased above.
         // Guarded so a command-table addition without a handler fails
@@ -109,6 +159,11 @@ const HANDLERS: ReadonlyMap<string, CommandHandler> = new Map(
     }
   }),
 );
+
+/** Whether the invocation is a `query` subcommand (SPEC 11). */
+function isQueryCommand(command: string): boolean {
+  return command.startsWith("query ");
+}
 
 /**
  * The CLI entry: parse per SPEC 12.0, dispatch per SPEC 12.5, return the
@@ -130,8 +185,8 @@ export async function main(
     stderr.write(`${result.message}\n`);
     return 2;
   }
-  const handler = HANDLERS.get(result.invocation.command);
-  if (handler === undefined) {
+  const loadHandler = HANDLERS.get(result.invocation.command);
+  if (loadHandler === undefined) {
     // Unreachable: the dispatch table is built from the same command table
     // the parser matches against. Guarded so a table regression fails loudly.
     throw new Error(
@@ -144,11 +199,37 @@ export async function main(
   // is a configuration error, reported as a usage error (exit 2) preceding
   // all source analysis; with `--json`, the exit-2 error prevents emitting
   // the single JSON document, so standard output stays empty (12.0).
-  const loaded = await loadWorkspace(cwd, result.invocation.config);
+  const location = await locateWorkspace(cwd, result.invocation.config);
+  if (!location.ok) {
+    emitConfigurationErrors(stderr, location.findings);
+    return 2;
+  }
+
+  // SPEC 13.3: `query` answers from the store when it verifies against the
+  // current workspace bytes (module header) — the recorded configuration
+  // parse stands in for re-parsing, so a fast answer never needs the
+  // parser. Anything unverified falls through to the full path below.
+  if (isQueryCommand(result.invocation.command)) {
+    const fast = await tryFastQuery(
+      result.invocation,
+      location.located,
+      stdout,
+      stderr,
+    );
+    if (fast !== null) {
+      return fast;
+    }
+  }
+
+  // The full path: parse the configuration (a parse failure is the same
+  // exit-2 configuration error as before), then dispatch.
+  const { parseLocatedWorkspace } = await import("../workspace/config.js");
+  const loaded = parseLocatedWorkspace(location.located);
   if (!loaded.ok) {
     emitConfigurationErrors(stderr, loaded.findings);
     return 2;
   }
+  const handler = await loadHandler();
   return handler(result.invocation, {
     cwd,
     workspace: loaded.workspace,

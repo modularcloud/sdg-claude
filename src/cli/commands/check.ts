@@ -30,7 +30,10 @@ import type { ExitCode, Finding } from "../../core/findings.js";
 import { evaluatePolicy } from "../../core/policy.js";
 import { stalenessFindings } from "../../workspace/check.js";
 import { loadGraphData } from "../../workspace/graph-data.js";
-import { analyzeWorkspace } from "../../workspace/pipeline.js";
+import {
+  analyzeWorkspace,
+  workspaceInputsOf,
+} from "../../workspace/pipeline.js";
 import { loadAllSessions } from "../../workspace/reviews.js";
 import { symlinkWritePathFindings } from "../../workspace/writes.js";
 import type { Invocation } from "../args.js";
@@ -69,6 +72,7 @@ export async function checkCommand(
       analysis.textModel,
       analysis.hashes,
       stored.data,
+      workspaceInputsOf(workspace, analysis),
     );
     findings.push(
       ...(await stalenessFindings(workspace.root, outputs, stored)),

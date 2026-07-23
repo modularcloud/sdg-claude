@@ -18,7 +18,10 @@ import { computeBuildOutputs } from "../../core/build.js";
 import type { ExitCode } from "../../core/findings.js";
 import { executeBuildOutputs } from "../../workspace/build.js";
 import { loadGraphData } from "../../workspace/graph-data.js";
-import { analyzeWorkspace } from "../../workspace/pipeline.js";
+import {
+  analyzeWorkspace,
+  workspaceInputsOf,
+} from "../../workspace/pipeline.js";
 import { symlinkWritePathFindings } from "../../workspace/writes.js";
 import type { Invocation } from "../args.js";
 import type { CommandContext } from "../io.js";
@@ -56,6 +59,7 @@ export async function buildCommand(
       analysis.textModel,
       analysis.hashes,
       stored.data,
+      workspaceInputsOf(workspace, analysis),
     );
     findings.push(
       ...(await symlinkWritePathFindings(workspace.root, outputs.writePaths)),

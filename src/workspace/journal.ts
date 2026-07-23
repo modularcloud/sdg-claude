@@ -46,6 +46,14 @@ export interface LoadedJournal {
   readonly entries: readonly PositionedJournalEntry[];
   /** The journal's 14.13 findings: bad lines, or a non-plain-file occupant. */
   readonly findings: readonly Finding[];
+  /**
+   * The exact bytes the journal was loaded from — null for an absent file
+   * (an empty journal, SPEC 6.1) and for a non-plain occupant (never read,
+   * SPEC 13.4). The journal is a derivation input (SPEC 5.4), so its
+   * content fingerprint enters the graph data's recorded inputs
+   * (SPEC 13.3; core/graph-data.ts).
+   */
+  readonly rawBytes: Uint8Array | null;
 }
 
 /** The journal's absolute path under the workspace root. */
@@ -66,6 +74,7 @@ export function journalFromBytes(bytes: Uint8Array | null): LoadedJournal {
       journal: new Journal([]),
       entries: [],
       findings: [],
+      rawBytes: null,
     };
   }
   const parsed = parseJournal(bytes);
@@ -74,6 +83,7 @@ export function journalFromBytes(bytes: Uint8Array | null): LoadedJournal {
     journal: new Journal(parsed.entries),
     entries: parsed.entries,
     findings: parsed.findings,
+    rawBytes: bytes,
   };
 }
 
@@ -101,6 +111,7 @@ export function occupiedJournal(occupant: PathOccupant): LoadedJournal {
     journal: new Journal([]),
     entries: [],
     findings: [finding],
+    rawBytes: null,
   };
 }
 

@@ -28,7 +28,7 @@ import type { Configuration } from "./config.js";
 import { canonicalOutDirPrefix } from "./discovery.js";
 import type { GeneratedFile } from "./emission.js";
 import { generateSpecModule } from "./emission.js";
-import type { GraphData } from "./graph-data.js";
+import type { GraphData, StoredInputs } from "./graph-data.js";
 import {
   buildGraphSnapshot,
   GRAPH_DATA_PATH,
@@ -81,6 +81,7 @@ export function computeBuildOutputs(
   textModel: WorkspaceTextModel,
   hashes: ReadonlyMap<string, NodeHashes>,
   stored: GraphData | null,
+  inputs: StoredInputs,
 ): BuildOutputs {
   // SPEC 12.0: deterministic output order — sources by byte order of
   // workspace-relative path (the classification already yields this order;
@@ -122,7 +123,10 @@ export function computeBuildOutputs(
   return {
     files,
     graphData: {
-      snapshot: buildGraphSnapshot(graph, hashes),
+      snapshot: buildGraphSnapshot(graph, hashes, textModel),
+      // SPEC 13.3: the recorded derivation inputs certify the snapshot for
+      // byte-identical current inputs (core/graph-data.ts).
+      inputs,
       // SPEC 13.3: the paths of the derived files most recently generated —
       // updated only by generation.
       derivedFiles: [...generated].sort(compareBytes),

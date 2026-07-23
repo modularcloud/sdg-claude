@@ -357,9 +357,15 @@ export async function writeDurableFile(
 /**
  * Append to a line-oriented durable file (SPEC 6.1: the journal is
  * append-only and comes into existence with the first append; SPEC 13.4:
- * line-oriented so concurrent additions merge textually). One O_APPEND
- * write of the complete bytes keeps the append atomic in its observable
- * effect (SPEC 13.5). The same non-plain-occupant refusal applies as for
+ * line-oriented so concurrent additions merge textually). Atomic in its
+ * observable effect (SPEC 13.5): the first append — the file absent —
+ * creates it as a complete file (temp beside the target, one rename), so a
+ * concurrent reader only ever observes absence or the complete first entry,
+ * never an empty or partial file (opening with O_CREAT and then writing
+ * would expose an empty file between the two). Appending callers run under
+ * workspace exclusivity (SPEC 13.5), so no concurrent appender races the
+ * absence classification. Later appends are one O_APPEND write of the
+ * complete bytes. The same non-plain-occupant refusal applies as for
  * `writeDurableFile`.
  */
 export async function appendDurableFile(
@@ -371,6 +377,10 @@ export async function appendDurableFile(
   const absolute = absoluteOf(root, rel);
   await requireDurableWritable(absolute, rel);
   const bytes = Buffer.from(contentBytes(content));
+  if ((await classifyOccupant(absolute)) === "absent") {
+    await replaceWithFile(absolute, bytes);
+    return;
+  }
   const handle = await fsp.open(absolute, "a");
   try {
     let written = 0;

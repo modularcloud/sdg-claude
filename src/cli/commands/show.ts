@@ -5,23 +5,20 @@
 // subtree text (fully expanded, 1.6), all four hashes (5.5), tags, coverage
 // attribute (absent for a root node, 11), and edges by kind. `query node`
 // is the machine-facing equivalent: `show --json` emits the identical node
-// report document (commands/common.ts), so the two commands can never
-// disagree. The answer comes from the refreshed graph (SPEC 13.3, via
-// cli/prepare.ts); an unknown node identity is a usage error, exit 2
-// (SPEC 12.0).
+// report document (./query-core.ts `nodeReportOf` — one shape, one place),
+// so the two commands can never disagree. The answer comes from the
+// refreshed graph (SPEC 13.3, via cli/prepare.ts); an unknown node identity
+// is a usage error, exit 2 (SPEC 12.0).
 
 import type { ExitCode } from "../../core/findings.js";
-import type { GraphEdge, RequirementNode } from "../../core/graph.js";
-import type { WorkspaceAnalysis } from "../../workspace/pipeline.js";
+import type { GraphEdge } from "../../core/graph.js";
 import type { Invocation } from "../args.js";
 import type { CommandContext } from "../io.js";
 import { prepareGraphForRead } from "../prepare.js";
-import {
-  emitDocument,
-  nodeReportDocument,
-  resolveRequirementNode,
-  usageError,
-} from "./common.js";
+import { analysisQueryView } from "./analysis-view.js";
+import { emitDocument, usageError } from "./common.js";
+import type { QueryRow, QueryView } from "./query-core.js";
+import { nodeReportOf, resolveRow } from "./query-core.js";
 
 /** A text value as an indented block, one report line per text line. */
 function indentedBlock(text: string): string {
@@ -47,41 +44,31 @@ function edgeLine(edge: GraphEdge, direction: "incoming" | "outgoing"): string {
  * and edges by kind (SPEC 12.0: the JSON form carries the same
  * information). Byte-deterministic: graph content and static text only.
  */
-function renderNodeHuman(
-  analysis: WorkspaceAnalysis,
-  node: RequirementNode,
-): string {
-  const hashes = analysis.hashes.get(node.identity);
-  if (hashes === undefined) {
-    throw new Error(
-      `xspec internal error: no hashes for requirement node ${node.identity}`,
-    );
-  }
-  const { section } = node;
-  let out = `${node.identity}\n`;
-  out += `source range: bytes ${String(section.range.start)}-${String(section.range.end)}\n`;
-  out += ["tags:", ...section.tags].join(" ") + "\n";
-  if (section.coverage !== null) {
-    out += `coverage: ${section.coverage}\n`;
+function renderNodeHuman(view: QueryView, row: QueryRow): string {
+  let out = `${row.identity}\n`;
+  out += `source range: bytes ${String(row.range.start)}-${String(row.range.end)}\n`;
+  out += ["tags:", ...row.tags].join(" ") + "\n";
+  if (row.coverage !== null) {
+    out += `coverage: ${row.coverage}\n`;
   }
   out += `hashes:\n`;
-  out += `  ownHash: ${hashes.ownHash}\n`;
-  out += `  subtreeHash: ${hashes.subtreeHash}\n`;
-  out += `  effectiveHash: ${hashes.effectiveHash}\n`;
-  out += `  metadataHash: ${hashes.metadataHash}\n`;
+  out += `  ownHash: ${row.hashes.ownHash}\n`;
+  out += `  subtreeHash: ${row.hashes.subtreeHash}\n`;
+  out += `  effectiveHash: ${row.hashes.effectiveHash}\n`;
+  out += `  metadataHash: ${row.hashes.metadataHash}\n`;
   out += `edges:\n`;
   out += `  incoming:\n`;
-  for (const edge of analysis.graph.incomingEdges(node.identity)) {
-    out += edgeLine(edge, "incoming");
+  for (const edge of view.edges) {
+    if (edge.target === row.identity) out += edgeLine(edge, "incoming");
   }
   out += `  outgoing:\n`;
-  for (const edge of analysis.graph.outgoingEdges(node.identity)) {
-    out += edgeLine(edge, "outgoing");
+  for (const edge of view.edges) {
+    if (edge.source === row.identity) out += edgeLine(edge, "outgoing");
   }
   out += `own text:\n`;
-  out += indentedBlock(analysis.textModel.ownText(node.document, section));
+  out += indentedBlock(row.ownText());
   out += `subtree text:\n`;
-  out += indentedBlock(analysis.textModel.subtreeText(node.document, section));
+  out += indentedBlock(row.subtreeText());
   return out;
 }
 
@@ -97,19 +84,16 @@ export async function showCommand(
   if (!prepared.ok) {
     return prepared.exit;
   }
-  const { analysis } = prepared;
+  const view = analysisQueryView(prepared.analysis);
 
-  const resolved = resolveRequirementNode(
-    analysis.graph,
-    invocation.positionals[0],
-  );
+  const resolved = resolveRow(view, invocation.positionals[0]);
   if (!resolved.ok) {
     return usageError(stderr, invocation.command, resolved.message);
   }
   if (invocation.json) {
     // SPEC 12.4/11: the machine form is `query node`'s document exactly.
-    return emitDocument(stdout, nodeReportDocument(analysis, resolved.node));
+    return emitDocument(stdout, nodeReportOf(view, resolved.row));
   }
-  stdout.write(renderNodeHuman(analysis, resolved.node));
+  stdout.write(renderNodeHuman(view, resolved.row));
   return 0;
 }

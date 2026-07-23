@@ -40,8 +40,11 @@ import type { SourceClassification } from "../core/discovery.js";
 import { markdownEmitDestinations } from "../core/discovery.js";
 import type { Finding } from "../core/findings.js";
 import { conditionExitClass } from "../core/findings.js";
+import { configurationToStored } from "../core/config-data.js";
+import type { StoredInputs } from "../core/graph-data.js";
 import type { SpecFileAnalysis } from "../core/graph.js";
 import { buildWorkspaceGraph, WorkspaceGraph } from "../core/graph.js";
+import { sha256Hex } from "../core/hash.js";
 import type { NodeHashes } from "../core/hashes.js";
 import { computeWorkspaceHashes } from "../core/hashes.js";
 import { Journal } from "../core/journal.js";
@@ -70,6 +73,13 @@ export interface WorkspaceAnalysis {
   /** SPEC 5.5: the four hashes of every requirement node. */
   readonly hashes: ReadonlyMap<string, NodeHashes>;
   readonly journal: LoadedJournal;
+  /**
+   * SHA-256 (hex) of each discovered source's exact bytes as analyzed —
+   * the graph data's recorded derivation inputs (SPEC 13.3;
+   * core/graph-data.ts). Unreadable sources have no entry (their 14.20
+   * finding fails validation before any store write).
+   */
+  readonly sourceHashes: ReadonlyMap<string, string>;
   /**
    * Every exit-1 validation finding (SPEC 14), deterministically ordered
    * (file bytes, location, condition — SPEC 12.0). Empty exactly when the
@@ -182,7 +192,9 @@ export async function analyzeWorkspaceContent(
         journal: new Journal([]),
         entries: [],
         findings: [],
+        rawBytes: null,
       },
+      sourceHashes: new Map(),
       findings: [],
       configurationErrors,
     };
@@ -202,6 +214,7 @@ export async function analyzeWorkspaceContent(
 
   // --- spec sources (SPEC 1–3; conditions 14.1–14.4, 14.8, 14.15–14.17,
   // 14.20) --------------------------------------------------------------
+  const sourceHashes = new Map<string, string>();
   const specs: SpecFileAnalysis[] = [];
   for (const source of classification.specSources) {
     const bytes = await content.readSource(source.path);
@@ -209,6 +222,7 @@ export async function analyzeWorkspaceContent(
       findings.push(unreadableSourceFinding(source.path));
       continue;
     }
+    sourceHashes.set(source.path, sha256Hex(bytes));
     try {
       const parsed = parseSpecSource(source.path, bytes);
       if (parsed.kind === "unparseable") {
@@ -252,6 +266,7 @@ export async function analyzeWorkspaceContent(
       findings.push(unreadableSourceFinding(source.path));
       continue;
     }
+    sourceHashes.set(source.path, sha256Hex(bytes));
     const analyzed = analyzeCodeSource(source.path, bytes, {
       specPaths,
       markdownDestinations,
@@ -285,8 +300,35 @@ export async function analyzeWorkspaceContent(
     textModel,
     hashes,
     journal,
+    sourceHashes,
     findings: orderFindings(findings),
     configurationErrors: [],
+  };
+}
+
+/**
+ * The graph data's recorded derivation inputs for this analysis
+ * (SPEC 13.3; core/graph-data.ts `StoredInputs`): the configuration file's
+ * content hash with its parsed form, the journal's content hash, and every
+ * analyzed source's content hash in byte order of path (SPEC 12.0). Shared
+ * by every producer of stored graph data — `build`, refresh-on-read,
+ * `check`'s would-be comparison, and the finishing regeneration of
+ * `rename`/`move` — so all of them record inputs by one rule.
+ */
+export function workspaceInputsOf(
+  workspace: LoadedWorkspace,
+  analysis: WorkspaceAnalysis,
+): StoredInputs {
+  return {
+    configHash: workspace.configHash,
+    config: configurationToStored(workspace.configuration),
+    journalHash:
+      analysis.journal.rawBytes === null
+        ? null
+        : sha256Hex(analysis.journal.rawBytes),
+    sources: [...analysis.sourceHashes.entries()]
+      .map(([sourcePath, hash]) => ({ path: sourcePath, hash }))
+      .sort((a, b) => compareBytes(a.path, b.path)),
   };
 }
 

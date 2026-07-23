@@ -36,7 +36,7 @@ import {
 import type { LoadedWorkspace } from "./config.js";
 import { loadGraphData, writeGraphData } from "./graph-data.js";
 import type { WorkspaceAnalysis } from "./pipeline.js";
-import { analyzeWorkspace } from "./pipeline.js";
+import { analyzeWorkspace, workspaceInputsOf } from "./pipeline.js";
 import { symlinkWritePathFindings } from "./writes.js";
 
 /** The outcome of the SPEC 13.3 pre-answer step. */
@@ -107,6 +107,7 @@ export async function prepareWorkspaceForRead(
     analysis.textModel,
     analysis.hashes,
     stored.data,
+    workspaceInputsOf(workspace, analysis),
   ).graphData;
 
   if (graphDataMatchesCurrent(stored.bytes, stored.data, build)) {
