@@ -44,16 +44,6 @@ signature. The entire pipeline must be built; tasks below are dependency-ordered
 
 ## Tasks
 
-- [ ] **T37 — SPEC 14 validation-errors sweep.**
-  Run section-14 and fix residuals: all 22 conditions detected with actionable file/
-  location/correction content; several present conditions all reported, not only the first;
-  masking exactly as specified (14.20 masks a file's internal conditions, references into it
-  report as 14.5–14.7; 14.1 masks 14.2 for immediate children; 14.14 precedes all source
-  analysis); the per-command reporting matrix (14.10 and 14.12 check-only; 14.21 check +
-  review subcommands + list, never build; 14.22 refuse-before-modify, check reports without
-  writing). Satisfies Finding 2 gap 21.
-  Verify: section-14 green (or every remaining failure explained).
-
 - [ ] **T38 — green sweep: SPEC sections 1–7 suite files.**
   Run every section-1.x, 2.x, 3, 4.x, 5.x, 6.x, 7* suite file; fix all residual product
   defects they diagnose (product code only — never `test/`). Closes Finding 1 gaps 1–7.
