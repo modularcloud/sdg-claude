@@ -44,24 +44,6 @@ signature. The entire pipeline must be built; tasks below are dependency-ordered
 
 ## Tasks
 
-- [ ] **T29 — review sessions and items: model and storage.**
-  In `src/core/` + `src/workspace/` (SPEC 10.1–10.3): sessions at
-  `.xspec/reviews/<name>.json`, plain deterministic files via the canonical serializer;
-  name charset `A–Z a–z 0–9 . _ -`, no leading `.`, else usage error; names case-sensitive
-  with the create-time ASCII-case-insensitive collision rule; only validly-named
-  `<name>.json` plain files directly under `.xspec/reviews/` are sessions — everything else
-  ignored by every command. Item model (10.2): `id`, `kind`, `scope`, `context`, `reason`,
-  `origin`, `baseline` (fixed at entry: baseline-graph values for baseline sessions,
-  current-graph values for audit/coverage), `current` (written at creation, rewritten at
-  resolve), `status`, optional `note`, `blockedBy`; items enter `unresolved`. Statuses
-  (10.3): the five statuses; resolved = `updated`/`no-change`/`skipped`; blocked while any
-  blocker unresolved; `invalidated` blockers re-block. Corruption detection (10.1 → 14.21):
-  non-plain file, unparseable, or violating any listed invariant (fields well-formed,
-  statuses valid, unique item ids, `blockedBy` closed and acyclic, at-most-one item per
-  kind+scope, well-formed recorded parameters/decompositions) — corrupt: `review`
-  subcommands naming it report and exit 1 modifying nothing. Satisfies Finding 2 gaps 9–10.
-  Verify: typecheck; section-10.1, 10.2-10.3 move with T33.
-
 - [ ] **T30 — review invalidation: relevant hashes and read-time recompute.**
   In `src/core/` (SPEC 10.4): the per-kind relevant-hash table (subtree-coherence:
   subtreeHash+metadataHash of each scope node; parent-consistency: ownHash+metadataHash of
