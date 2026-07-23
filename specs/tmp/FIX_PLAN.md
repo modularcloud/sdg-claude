@@ -44,16 +44,6 @@ signature. The entire pipeline must be built; tasks below are dependency-ordered
 
 ## Tasks
 
-- [ ] **T32 — audit strategy and coverage sessions.**
-  In `src/core/`: `audit` (SPEC 10.6) — one `subtree-coherence` item per requirement node,
-  roots included; context: ancestor chain; origin empty; scope: node+descendants; order:
-  file path (byte order) then document order; `blockedBy`: the child sections' items (after
-  split, their decompositions) so review is bottom-up; no baseline. Coverage sessions (SPEC
-  10.7): one `uncovered-requirement` item per uncovered required node of the recorded
-  profile — scope: the node; context: ancestor chain; origin and `blockedBy` empty; ordered
-  by file path then document order. Satisfies Finding 2 gaps 13 and part of 14.
-  Verify: typecheck; section-10.6 and coverage-session tests in 10.7 move with T33.
-
 - [ ] **T33 — review commands: `create`, `list`, `status`, `show`, `export`.**
   In `src/cli/` (SPEC 10.7): `create` requires exactly one of `--base <ref>` (path-blocks),
   `--strategy audit`, `--coverage <profile>` — none/multiple/other strategy = usage error;

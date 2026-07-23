@@ -13,8 +13,19 @@
 // path. The exclusion is coverage-scoped (SPEC 8): this module removes the
 // root-adjacent edges only from its own reachability question — the graph
 // itself keeps them for policy, impact, effectiveHash, and query.
+//
+// The evaluation runs over a `ResolvedCoverageProfile` — the profile's 7.4
+// fields with each group reference resolved to its glob matchers — so the
+// one implementation serves both consumers (the shared-seam pattern of
+// SPEC 9.2's impact edges): the `xspec coverage` command resolves a
+// configured profile against the current configuration
+// (`resolveConfiguredCoverageProfile`), while a `coverage` review session
+// resolves its recorded profile definition — the recorded glob lists,
+// compiled — and matches them against the currently discovered sources
+// (SPEC 10.7; src/core/coverage-session.ts).
 
 import type { Configuration, CoverageProfile } from "./config.js";
+import type { DependencyEdgeKind } from "./config.js";
 import type { RequirementNode, WorkspaceGraph } from "./graph.js";
 import { shortestWitnessPath } from "./paths.js";
 
@@ -57,6 +68,32 @@ export interface ProfileCoverage {
   readonly ignored: readonly IgnoredNodeCoverage[];
 }
 
+/** A compiled path matcher (core/glob.ts `CompiledGlob` satisfies this). */
+export interface CoveragePathMatcher {
+  matches(path: string): boolean;
+}
+
+/**
+ * A coverage profile ready for evaluation (module header): the SPEC 7.4
+ * fields with each group reference resolved to the group's kind and glob
+ * matchers. How the matchers are obtained is the caller's — the current
+ * configuration's compiled globs (`resolveConfiguredCoverageProfile`), or a
+ * review session's recorded glob lists compiled at use (SPEC 10.7).
+ */
+export interface ResolvedCoverageProfile {
+  readonly name: string;
+  /** The target spec group's glob matchers (SPEC 7.4). */
+  readonly targetGlobs: readonly CoveragePathMatcher[];
+  /** When present, never empty (SPEC 7.4). */
+  readonly targetTags?: readonly string[];
+  readonly targets: "leaves" | "all";
+  readonly boundaryKind: "spec" | "code";
+  readonly boundaryGlobs: readonly CoveragePathMatcher[];
+  readonly mode: "direct" | "transitive";
+  /** Never empty (SPEC 7.4: defaults to all three). */
+  readonly edgeKinds: readonly DependencyEdgeKind[];
+}
+
 /**
  * The virtual multi-source origin for covering-path searches. No real
  * graph-node identity can collide with it: identities are workspace-relative
@@ -76,7 +113,7 @@ const VIRTUAL_SOURCE = "\u0000boundary";
  */
 function exclusionReasons(
   graph: WorkspaceGraph,
-  profile: CoverageProfile,
+  profile: ResolvedCoverageProfile,
   node: RequirementNode,
 ): string[] {
   const reasons: string[] = [];
@@ -103,7 +140,7 @@ function groupGlobs(
   configuration: Configuration,
   kind: "spec" | "code",
   name: string,
-): readonly { matches(path: string): boolean }[] {
+): readonly CoveragePathMatcher[] {
   const groups =
     kind === "spec" ? configuration.specGroups : configuration.codeGroups;
   const group = groups.find((candidate) => candidate.name === name);
@@ -126,14 +163,9 @@ function groupGlobs(
  */
 function boundaryNodes(
   graph: WorkspaceGraph,
-  configuration: Configuration,
-  profile: CoverageProfile,
+  profile: ResolvedCoverageProfile,
 ): Set<string> {
-  const globs = groupGlobs(
-    configuration,
-    profile.boundaryKind,
-    profile.boundary,
-  );
+  const globs = profile.boundaryGlobs;
   const boundary = new Set<string>();
   if (profile.boundaryKind === "spec") {
     for (const node of graph.requirementNodes) {
@@ -160,7 +192,7 @@ function boundaryNodes(
  */
 function coverageAdjacency(
   graph: WorkspaceGraph,
-  profile: CoverageProfile,
+  profile: ResolvedCoverageProfile,
   roots: ReadonlySet<string>,
 ): Map<string, ReadonlySet<string>> {
   const kinds = new Set<string>(profile.edgeKinds);
@@ -217,24 +249,51 @@ function shortestCoveringPath(
 }
 
 /**
- * Evaluate one coverage profile over the graph (SPEC 8, 8.1, 8.2): classify
- * every node of the target group as ignored (with all applicable exclusion
- * reasons, fixed order), covered (with one shortest covering path under the
- * SPEC 12.0 byte tie rule), or uncovered. Callers pass a validated
- * configuration whose groups the profile references (SPEC 14.14).
+ * Resolve a configured profile's group references against the current
+ * configuration (SPEC 7.4): the target is a spec group; the boundary group
+ * is looked up under the profile's resolved boundary kind. Callers pass a
+ * validated configuration whose groups the profile references (SPEC 14.14).
  */
-export function evaluateCoverageProfile(
-  graph: WorkspaceGraph,
+export function resolveConfiguredCoverageProfile(
   configuration: Configuration,
   profile: CoverageProfile,
+): ResolvedCoverageProfile {
+  return {
+    name: profile.name,
+    targetGlobs: groupGlobs(configuration, "spec", profile.target),
+    targetTags: profile.targetTags,
+    targets: profile.targets,
+    boundaryKind: profile.boundaryKind,
+    boundaryGlobs: groupGlobs(
+      configuration,
+      profile.boundaryKind,
+      profile.boundary,
+    ),
+    mode: profile.mode,
+    edgeKinds: profile.edgeKinds,
+  };
+}
+
+/**
+ * Evaluate one resolved coverage profile over the graph (SPEC 8, 8.1, 8.2):
+ * classify every node of the target group as ignored (with all applicable
+ * exclusion reasons, fixed order), covered (with one shortest covering path
+ * under the SPEC 12.0 byte tie rule), or uncovered. The graph fixes the
+ * node universe: the matchers select among the discovered sources' nodes,
+ * so a recorded profile's globs are matched against the currently
+ * discovered sources exactly as SPEC 10.7 requires.
+ */
+export function evaluateResolvedCoverageProfile(
+  graph: WorkspaceGraph,
+  profile: ResolvedCoverageProfile,
 ): ProfileCoverage {
-  const targetGlobs = groupGlobs(configuration, "spec", profile.target);
+  const targetGlobs = profile.targetGlobs;
   // SPEC 8: root nodes never participate in coverage paths.
   const roots = new Set<string>();
   for (const node of graph.requirementNodes) {
     if (node.id === null) roots.add(node.identity);
   }
-  const boundary = boundaryNodes(graph, configuration, profile);
+  const boundary = boundaryNodes(graph, profile);
   const adjacency = coverageAdjacency(graph, profile, roots);
 
   const covered: CoveredNodeCoverage[] = [];
@@ -269,4 +328,20 @@ export function evaluateCoverageProfile(
     uncovered,
     ignored,
   };
+}
+
+/**
+ * Evaluate one configured coverage profile over the graph (SPEC 8, 8.1,
+ * 8.2): `resolveConfiguredCoverageProfile` composed with
+ * `evaluateResolvedCoverageProfile` — the `xspec coverage` command's entry.
+ */
+export function evaluateCoverageProfile(
+  graph: WorkspaceGraph,
+  configuration: Configuration,
+  profile: CoverageProfile,
+): ProfileCoverage {
+  return evaluateResolvedCoverageProfile(
+    graph,
+    resolveConfiguredCoverageProfile(configuration, profile),
+  );
 }
