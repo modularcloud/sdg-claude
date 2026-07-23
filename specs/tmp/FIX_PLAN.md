@@ -44,18 +44,6 @@ signature. The entire pipeline must be built; tasks below are dependency-ordered
 
 ## Tasks
 
-- [ ] **T36 — SPEC 12.0 conventions sweep.**
-  Run section-12.0-i, section-12.0-ii, section-12.3-12.5 and fix every remaining global-
-  convention gap across all commands (SPEC 12.0): `--json` single-document rule and exit-2
-  empty stdout; report/stdout vs diagnostic/stderr split; `--config` everywhere; flag
-  repetition and non-UTF-8 argument usage errors; workspace-relative interpretation of
-  node/file arguments vs cwd-relative `--config`/`--test-hold`; byte-wise case-sensitive
-  comparisons; byte-determinism of all output/files (run-twice identical); the shortest-path
-  byte tie rule wherever paths are reported; exact exit-code partition memberships; the
-  precedence rules (rename/move existence checks and baseline resolution before source
-  validation; unparseable-origin masking → exit 1). Satisfies Finding 2 gaps 16 and 18.
-  Verify: those three files green (or every remaining failure explained in the report).
-
 - [ ] **T37 — SPEC 14 validation-errors sweep.**
   Run section-14 and fix residuals: all 22 conditions detected with actionable file/
   location/correction content; several present conditions all reported, not only the first;
