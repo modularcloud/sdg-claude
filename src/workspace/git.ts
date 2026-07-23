@@ -15,6 +15,28 @@
 
 import { Buffer } from "node:buffer";
 import { spawn } from "node:child_process";
+import * as os from "node:os";
+
+/**
+ * The environment for a spawned git, normalized for the platform: on
+ * Windows, a `GIT_CONFIG_GLOBAL` naming the null device by Node's spelling
+ * (`os.devNull` = `\\.\nul`) is translated to `nul` — git accepts the
+ * classic device name (and `/dev/null`) where a configuration file path is
+ * expected, but its config access dies on the `\\.\nul` spelling, which
+ * would fail every git invocation with an unrelated fatal error. The
+ * intent of such a value — read no global configuration — is preserved
+ * exactly; nothing else is changed (SPEC 6.3: git is a read-only content
+ * store, and the caller's environment otherwise applies as is).
+ */
+function gitEnvironment(): NodeJS.ProcessEnv {
+  if (
+    process.platform === "win32" &&
+    process.env["GIT_CONFIG_GLOBAL"] === os.devNull
+  ) {
+    return { ...process.env, GIT_CONFIG_GLOBAL: "nul" };
+  }
+  return process.env;
+}
 
 /** The outcome of one git invocation. */
 export type GitResult =
@@ -45,6 +67,7 @@ export function runGit(
   return new Promise((resolve) => {
     const child = spawn("git", args, {
       cwd,
+      env: gitEnvironment(),
       stdio: ["pipe", "pipe", "ignore"],
       windowsHide: true,
     });

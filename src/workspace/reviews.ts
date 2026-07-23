@@ -123,6 +123,22 @@ export async function loadSession(
   root: string,
   name: string,
 ): Promise<LoadedSession> {
+  // SPEC 10.1/12.0: session names, like paths, compare byte-wise and
+  // case-sensitively. On a case-insensitive filesystem (the Windows leg,
+  // E-6) a path lookup for `Foo.json` reaches an entry spelled
+  // `foo.json`, so existence is judged against the directory's exact
+  // entry names first: no byte-identical entry, no session — `NAME.JSON`
+  // is not a session file and `Foo` never resolves to `foo`.
+  const entryName = `${name}${SESSION_EXTENSION}`;
+  let entries: string[];
+  try {
+    entries = await fsp.readdir(reviewsAbsolutePath(root));
+  } catch {
+    return { state: "absent", name };
+  }
+  if (!entries.includes(entryName)) {
+    return { state: "absent", name };
+  }
   const absolute = sessionAbsolutePath(root, name);
   const occupant = await classifyOccupant(absolute);
   if (occupant === "absent") {
