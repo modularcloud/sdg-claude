@@ -64,6 +64,70 @@ export interface ImpactRequirementReportEntry {
 /** The witness edge kinds a code location can source (SPEC 9.2). */
 export type ImpactEdgeKind = "references" | "embeds";
 
+/**
+ * SPEC 9.2: the impact edges of every code location — the union of its
+ * `references` and `embeds` edges in the baseline graph and in the current
+ * graph, with identities mapped through the journal: a baseline edge and a
+ * current edge reaching the same change record are one edge. Locations are
+ * keyed by identity — a location absent from the current graph keeps its
+ * baseline identity (SPEC 9.2). Per location, per target record, the edge
+ * kinds reaching it. Shared by the impact report and by the `path-blocks`
+ * review strategy (SPEC 10.5), so the union rule has one implementation.
+ */
+export function collectImpactEdges(
+  analysis: ChangeAnalysis,
+  baselineGraph: WorkspaceGraph,
+  currentGraph: WorkspaceGraph,
+): Map<string, Map<NodeChange, Set<ImpactEdgeKind>>> {
+  const locations = new Map<string, Map<NodeChange, Set<ImpactEdgeKind>>>();
+  const addSide = (
+    graph: WorkspaceGraph,
+    recordOf: ReadonlyMap<string, NodeChange>,
+    side: string,
+  ): void => {
+    for (const location of graph.codeLocations) {
+      for (const edge of graph.outgoingEdges(location.identity)) {
+        if (edge.kind !== "references" && edge.kind !== "embeds") continue;
+        const record = recordOf.get(edge.target);
+        if (record === undefined) {
+          // Impossible over validated graphs: every requirement node of
+          // either side has a change record under that side's identity.
+          throw new Error(
+            `xspec internal error: no change record for the ${side} ` +
+              `impact-edge target ${edge.target}`,
+          );
+        }
+        let targets = locations.get(location.identity);
+        if (targets === undefined) {
+          locations.set(location.identity, (targets = new Map()));
+        }
+        let kinds = targets.get(record);
+        if (kinds === undefined) targets.set(record, (kinds = new Set()));
+        kinds.add(edge.kind);
+      }
+    }
+  };
+  addSide(baselineGraph, analysis.byBaselineIdentity, "baseline");
+  addSide(currentGraph, analysis.byCurrentIdentity, "current");
+  return locations;
+}
+
+/**
+ * SPEC 9.2/10.5: whether an impact-edge target's subtreeHash or
+ * effectiveHash changed — the predicate that makes a location impacted,
+ * under the stated exception to 5.6's both-sides rule: a node present on
+ * only one side counts as one whose subtreeHash and effectiveHash changed.
+ * The union of 9.2's two categories: directly impacted (subtreeHash) and
+ * transitively impacted (effectiveHash without subtreeHash).
+ */
+export function countsAsImpactChanged(record: NodeChange): boolean {
+  return (
+    record.presence !== "both" ||
+    record.subtreeChanged ||
+    record.effectiveChanged
+  );
+}
+
 /** One impacted-code entry (SPEC 9.3). */
 export interface ImpactedCodeReportEntry {
   /** The code location's identity — its baseline identity when absent from
@@ -358,47 +422,13 @@ class ImpactComputation {
     return entries;
   }
 
-  /**
-   * SPEC 9.2: the impact edges of every code location — the union of its
-   * `references` and `embeds` edges in the baseline graph and in the
-   * current graph, with identities mapped through the journal: a baseline
-   * edge and a current edge reaching the same change record are one edge.
-   * Locations are keyed by identity — a location absent from the current
-   * graph keeps its baseline identity (SPEC 9.2). Per location, per
-   * target record, the edge kinds reaching it.
-   */
+  /** The SPEC 9.2 impact edges of every code location (`collectImpactEdges`). */
   private impactEdges(): Map<string, Map<NodeChange, Set<ImpactEdgeKind>>> {
-    const locations = new Map<string, Map<NodeChange, Set<ImpactEdgeKind>>>();
-    const addSide = (
-      graph: WorkspaceGraph,
-      recordOf: ReadonlyMap<string, NodeChange>,
-      side: string,
-    ): void => {
-      for (const location of graph.codeLocations) {
-        for (const edge of graph.outgoingEdges(location.identity)) {
-          if (edge.kind !== "references" && edge.kind !== "embeds") continue;
-          const record = recordOf.get(edge.target);
-          if (record === undefined) {
-            // Impossible over validated graphs: every requirement node of
-            // either side has a change record under that side's identity.
-            throw new Error(
-              `xspec internal error: no change record for the ${side} ` +
-                `impact-edge target ${edge.target}`,
-            );
-          }
-          let targets = locations.get(location.identity);
-          if (targets === undefined) {
-            locations.set(location.identity, (targets = new Map()));
-          }
-          let kinds = targets.get(record);
-          if (kinds === undefined) targets.set(record, (kinds = new Set()));
-          kinds.add(edge.kind);
-        }
-      }
-    };
-    addSide(this.baselineGraph, this.analysis.byBaselineIdentity, "baseline");
-    addSide(this.currentGraph, this.analysis.byCurrentIdentity, "current");
-    return locations;
+    return collectImpactEdges(
+      this.analysis,
+      this.baselineGraph,
+      this.currentGraph,
+    );
   }
 
   /**

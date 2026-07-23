@@ -44,30 +44,6 @@ signature. The entire pipeline must be built; tasks below are dependency-ordered
 
 ## Tasks
 
-- [ ] **T31 — path-blocks strategy.**
-  In `src/core/` (SPEC 10.5): for each `changed` node without a `changed` ancestor: one
-  `subtree-coherence` item (scope: node+descendants; context: ancestor chain; origin:
-  `changed` nodes in scope); one `parent-consistency` item per non-root ancestor (scope: A;
-  context: A's child on each changed branch; origin: the branches' `changed` nodes; single
-  item per A with union of branches; `blockedBy` = per branch the child's subtree-coherence
-  item when the child is the branch's changed node else the child's parent-consistency
-  item). Plus: one `metadata-consistency` item per `metadata-changed` node (context:
-  added+removed `d` targets; coverage/tags changes in `reason`); one `dependency-consistency`
-  item per node with a dependency edge to a both-sides target whose effectiveHash changed
-  (context: those targets; origin: their changes' originating nodes); one `code-impact` item
-  per impacted location (context: impact-edge targets making it impacted, added/deleted
-  included; origin: their originating nodes). Total order exactly per 10.5: requirement
-  items by scope depth deepest first, kind order subtree-coherence → metadata-consistency →
-  dependency-consistency → parent-consistency, file path, document order (present scope
-  nodes first in document order; absent ones by identity then item id); code-impact last by
-  location identity. Re-derivation on resolve-with-`updated` under the five rules (kind+
-  scope matching keeps id/status/recorded state; recorded decompositions replayed
-  recursively, never re-adding decomposed items; no-longer-generated items remain with
-  `blockedBy`; new items with current state in order; `blockedBy` recomputed with decomposed
-  references replaced by their decompositions). Satisfies Finding 2 gap 12.
-  Verify: typecheck; section-10.5 moves with T33–T34; SPEC 15's four-item session is the
-  acceptance example (section-15).
-
 - [ ] **T32 — audit strategy and coverage sessions.**
   In `src/core/`: `audit` (SPEC 10.6) — one `subtree-coherence` item per requirement node,
   roots included; context: ancestor chain; origin empty; scope: node+descendants; order:
