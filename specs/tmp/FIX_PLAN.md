@@ -44,25 +44,6 @@ signature. The entire pipeline must be built; tasks below are dependency-ordered
 
 ## Tasks
 
-- [ ] **T30 — review invalidation: relevant hashes and read-time recompute.**
-  In `src/core/` (SPEC 10.4): the per-kind relevant-hash table (subtree-coherence:
-  subtreeHash+metadataHash of each scope node; parent-consistency: ownHash+metadataHash of
-  scope, subtreeHash of each context node; dependency-consistency: ownHash+metadataHash of
-  scope, subtreeHash of each upstream context target; metadata-consistency: metadataHash;
-  code-impact: subtreeHash+effectiveHash of each impact-edge target; uncovered-requirement:
-  subtreeHash+metadataHash). Resolve records current relevant hashes and per-node presence
-  (absent = explicit marker). Invalidation: recorded state differs from the current graph —
-  a hash changed, presence flipped either way, or the context set changed (current context
-  set = the strategy generators re-run with recorded creation parameters and recorded
-  decompositions against the current workspace, computed without persisting); an item no
-  longer generated keeps its recorded context set; already-absent nodes staying absent do
-  not invalidate. All comparisons by canonical identity (journaled renames/moves invalidate
-  nothing, duplicate nothing, discard nothing); reads present recorded nodes forward-mapped
-  through the journal; validity recomputed on every read (`status`/`next`/`show`/`export`),
-  never persisted — sessions change only through mutating subcommands. Satisfies Finding 2
-  gap 11.
-  Verify: typecheck; section-10.4 moves with T33–T34.
-
 - [ ] **T31 — path-blocks strategy.**
   In `src/core/` (SPEC 10.5): for each `changed` node without a `changed` ancestor: one
   `subtree-coherence` item (scope: node+descendants; context: ancestor chain; origin:
