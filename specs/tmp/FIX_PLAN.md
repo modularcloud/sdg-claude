@@ -44,11 +44,6 @@ signature. The entire pipeline must be built; tasks below are dependency-ordered
 
 ## Tasks
 
-- [ ] **T38 — green sweep: SPEC sections 1–7 suite files.**
-  Run every section-1.x, 2.x, 3, 4.x, 5.x, 6.x, 7* suite file; fix all residual product
-  defects they diagnose (product code only — never `test/`). Closes Finding 1 gaps 1–7.
-  Verify: all those files green; list any that are not, with diagnosis, in the report.
-
 - [ ] **T39 — green sweep: SPEC sections 8–13 suite files.**
   Run section-8, 9, 9.3, 10.*, 11, 12.*, 13.*; fix all residual product defects. Closes
   Finding 2 gaps 2–20.

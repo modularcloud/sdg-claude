@@ -254,6 +254,12 @@ function createSingleFileProgram(
   const options: ts.CompilerOptions = {
     noLib: true,
     noResolve: true,
+    // SPEC 14.20/7: grammar selection is by file name alone — `.tsx` as
+    // TSX, any other discovered code-group name (`.md`, extensionless, …)
+    // as plain TypeScript. Without this flag the program silently drops
+    // root files whose names lack a TS extension, leaving them unbound and
+    // every identifier unresolvable (SPEC 4.5 scoping would see nothing).
+    allowNonTsExtensions: true,
     target: ts.ScriptTarget.Latest,
     ...(tsx ? { jsx: ts.JsxEmit.Preserve } : {}),
   };
