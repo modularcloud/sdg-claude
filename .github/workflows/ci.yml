@@ -73,11 +73,16 @@ jobs:
           XSPEC_E6_EXCHANGE_DIR: ${{ github.workspace }}/.e6-exchange
       - name: Upload E-6 exchange outputs for the Windows leg
         # No files exist until the harness writes the representative fixture's
-        # outputs into XSPEC_E6_EXCHANGE_DIR on this leg.
+        # outputs into XSPEC_E6_EXCHANGE_DIR on this leg. The exchange lives
+        # in a dot-directory, which upload-artifact v4 excludes by default
+        # (include-hidden-files: false since v4.4) — without the override the
+        # written exchange uploads as nothing and the Windows comparison
+        # fails loudly on a missing manifest (E-6, H-9).
         uses: actions/upload-artifact@v4
         with:
           name: e6-linux-outputs
           path: .e6-exchange
+          include-hidden-files: true
           if-no-files-found: ignore
 
   suite-windows:
