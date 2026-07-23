@@ -107,9 +107,13 @@ const encoder = new TextEncoder();
  * a dot access keeps its form when the new name is a valid segment of dot
  * access, and otherwise becomes double-quoted computed access (the whole
  * access — `.old` — is replaced); a computed access keeps its form and
- * quote style, its index literal rewritten in place.
+ * quote style, its index literal rewritten in place. Shared with the
+ * section-form move (SPEC 6.5: rewrites mirror rename's minimal edits).
  */
-function segmentEdit(segment: SegmentSpelling, newName: string): SourceEdit {
+export function segmentEdit(
+  segment: SegmentSpelling,
+  newName: string,
+): SourceEdit {
   if (segment.access === "dot") {
     if (isDotAccessSegmentName(newName)) {
       return { range: segment.nameRange, replacement: newName };
@@ -135,11 +139,12 @@ function segmentEdit(segment: SegmentSpelling, newName: string): SourceEdit {
 // ---------------------------------------------------------------------------
 
 /**
- * SPEC 6.4 prefix replacement over ID paths: the mapped ID when `id` is the
- * renamed ID or a descendant of it, null when unaffected. Matched on
- * segment boundaries — `a.b2` is no descendant of `a.b`.
+ * SPEC 6.4/6.5 prefix replacement over ID paths: the mapped ID when `id` is
+ * the operated-on ID or a descendant of it, null when unaffected. Matched
+ * on segment boundaries — `a.b2` is no descendant of `a.b`. Shared with the
+ * section-form move (SPEC 6.5: re-identified by prefix replacement).
  */
-function replaceIdPrefix(
+export function replaceIdPrefix(
   id: string,
   oldId: string,
   newId: string,

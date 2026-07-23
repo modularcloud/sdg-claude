@@ -46,11 +46,6 @@ import { JOURNAL_PATH, serializeJournalEntry } from "../../core/journal.js";
 import type { SpecSection } from "../../core/mdx.js";
 import type { RenamePlan } from "../../core/rename.js";
 import { planRename } from "../../core/rename.js";
-import {
-  containsControl,
-  containsWhitespace,
-  FORBIDDEN_SEGMENT_NAMES,
-} from "../../core/text.js";
 import { executeBuildOutputs } from "../../workspace/build.js";
 import type { LoadedWorkspace } from "../../workspace/config.js";
 import { loadGraphData } from "../../workspace/graph-data.js";
@@ -72,7 +67,7 @@ import {
 import type { Invocation } from "../args.js";
 import type { CliWriter, CommandContext } from "../io.js";
 import { emitConfigurationErrors, emitFindingsReport } from "../report.js";
-import { testHoldSpecOf, usageError } from "./common.js";
+import { requirementIdProblem, testHoldSpecOf, usageError } from "./common.js";
 
 /**
  * SPEC 6.4/12.0: a refused rename is a validation failure — exit 1, the
@@ -100,36 +95,6 @@ function emitFindingsRefusal(
 ): ExitCode {
   emitFindingsReport(json, stdout, findings);
   return 1;
-}
-
-/**
- * Why `newId` is not a valid requirement ID (SPEC 1.4), or null when it is.
- * Segment splitting on `.` makes the no-`.` rule structural; each segment
- * must be non-empty, free of `#`, whitespace, and control characters, and
- * none of the forbidden names.
- */
-function newIdProblem(newId: string): string | null {
-  for (const segment of newId.split(".")) {
-    if (segment.length === 0) {
-      return "it has an empty segment";
-    }
-    if (FORBIDDEN_SEGMENT_NAMES.has(segment)) {
-      return (
-        `its segment ${JSON.stringify(segment)} is one of the forbidden ` +
-        `names ("$", "__proto__", "prototype", "constructor", "then")`
-      );
-    }
-    if (segment.includes("#")) {
-      return `its segment ${JSON.stringify(segment)} contains "#"`;
-    }
-    if (containsWhitespace(segment)) {
-      return `its segment ${JSON.stringify(segment)} contains whitespace`;
-    }
-    if (containsControl(segment)) {
-      return `its segment ${JSON.stringify(segment)} contains a control character`;
-    }
-  }
-  return null;
 }
 
 /**
@@ -245,7 +210,7 @@ async function runRename(
         `(SPEC 6.4)`,
     );
   }
-  const invalid = newIdProblem(newId);
+  const invalid = requirementIdProblem(newId);
   if (invalid !== null) {
     return emitRefusal(
       invocation.json,

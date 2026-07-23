@@ -44,25 +44,6 @@ signature. The entire pipeline must be built; tasks below are dependency-ordered
 
 ## Tasks
 
-- [ ] **T28 — `xspec move`, section form.**
-  (SPEC 6.5 second form): `move <file>#<id> <target-file>#<new-id>` — extract the section
-  subtree with the exact text rules: moved text = the construct's own characters (opening
-  tag through closing tag, or self-closing tag); delete in place at origin, dropping lines
-  left empty/whitespace-only purely by the deletion with their terminators (SPEC 3 rules);
-  insert immediately before the target parent's closing tag (end of file for top-level
-  `new-id`), followed by U+000A, preceded by U+000A when not at start of line; rewrite a
-  self-closing target parent to paired form exactly as specified; create the target file if
-  absent; re-identify by prefix replacement; rewrite references converting local/imported
-  forms, adding imports with fresh non-colliding deterministic identifiers and removing spec
-  imports whose bindings the rewrite leaves referenceless (previously-unreferenced imports
-  stay); journal; regenerate; beyond the specified edits change no bytes. Additional
-  refusals: exact self-move; `<new-id>` colliding with an ID remaining in the target after
-  removal; missing target parent or one inside the moved subtree. Hash semantics per SPEC
-  6.2 (identity mapping changes no hash; the straddling-lines nuance may make nodes
-  `changed` with ordinary cascades; same-parent final re-insertion pure in effect). Under
-  T25 exclusion. Satisfies Finding 1 gap 6 (6.5 section form).
-  Verify: section-6.5 green; section-6.2 green.
-
 - [ ] **T29 — review sessions and items: model and storage.**
   In `src/core/` + `src/workspace/` (SPEC 10.1–10.3): sessions at
   `.xspec/reviews/<name>.json`, plain deterministic files via the canonical serializer;

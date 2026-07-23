@@ -17,6 +17,11 @@ import type {
   RequirementNode,
   WorkspaceGraph,
 } from "../../core/graph.js";
+import {
+  containsControl,
+  containsWhitespace,
+  FORBIDDEN_SEGMENT_NAMES,
+} from "../../core/text.js";
 import type { TestHoldSpec } from "../../workspace/lock.js";
 import type { WorkspaceAnalysis } from "../../workspace/pipeline.js";
 import type { Invocation } from "../args.js";
@@ -60,6 +65,37 @@ export function testHoldSpecOf(
     return undefined;
   }
   return { given, absolutePath: path.resolve(cwd, given) };
+}
+
+/**
+ * Why `id` is not a valid requirement ID (SPEC 1.4), or null when it is.
+ * Shared by `rename` and the section form of `move` (SPEC 6.4, 6.5: the new
+ * ID is valid). Segment splitting on `.` makes the no-`.` rule structural;
+ * each segment must be non-empty, free of `#`, whitespace, and control
+ * characters, and none of the forbidden names.
+ */
+export function requirementIdProblem(id: string): string | null {
+  for (const segment of id.split(".")) {
+    if (segment.length === 0) {
+      return "it has an empty segment";
+    }
+    if (FORBIDDEN_SEGMENT_NAMES.has(segment)) {
+      return (
+        `its segment ${JSON.stringify(segment)} is one of the forbidden ` +
+        `names ("$", "__proto__", "prototype", "constructor", "then")`
+      );
+    }
+    if (segment.includes("#")) {
+      return `its segment ${JSON.stringify(segment)} contains "#"`;
+    }
+    if (containsWhitespace(segment)) {
+      return `its segment ${JSON.stringify(segment)} contains whitespace`;
+    }
+    if (containsControl(segment)) {
+      return `its segment ${JSON.stringify(segment)} contains a control character`;
+    }
+  }
+  return null;
 }
 
 /** A source range (SPEC 1.7) as JSON data. */

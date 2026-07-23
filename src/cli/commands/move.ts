@@ -10,6 +10,15 @@
 // selected by the origin argument: an origin containing `#` names a section
 // (the second form), a bare origin names a file.
 //
+// The section form extracts the section subtree with the exact text edits
+// of SPEC 6.5 (deletion with the SPEC 3 line-drop rule; insertion before
+// the target parent's closing tag or at the end of the file; a self-closing
+// target parent rewritten to paired form; the target file created when
+// absent), re-identifies it by prefix replacement, rewrites every reference
+// converting between local and imported forms with deterministic import
+// additions and exact removals, appends the full mapping to the journal,
+// and regenerates (core/move.ts holds the pure derivation).
+//
 // Outcome precedence (SPEC 6.5, 6.4, 12.0, 13.5, 14):
 //
 // 1. Workspace exclusivity (SPEC 13.5): `move` is a mutating command — while
@@ -33,18 +42,22 @@
 //    UTF-8, contains `#`, is not a well-formed workspace-relative path,
 //    already exists, belongs to no configured spec group, belongs to a code
 //    group as well (14.14), would be excluded as a derived-file path (13.4),
-//    or lacks the `.mdx` extension (14.19).
+//    or lacks the `.mdx` extension (14.19). For the section form: a target
+//    file that is neither a discovered spec source nor a creatable valid
+//    spec-source path (the same destination-validity family); the exact
+//    self-move; an invalid `<new-id>` (1.4); a `<new-id>` colliding with an
+//    ID remaining in the target file after the removal; a missing target
+//    parent or one inside the moved subtree; a moved reference targeting the
+//    target file's root node (the local form cannot name it, 2.2).
 // 6. The rewritten workspace is re-validated in memory — realizing "all
-//    rewritten references resolve" and the no-new-cycles rule — and the
-//    complete write set passes the SPEC 14.22 symlink check; any finding
-//    refuses (exit 1) before modifying anything.
+//    rewritten references resolve" and the no-new-cycles rule (import and
+//    dependency cycles alike, 5.3, 2.1) — and the complete write set passes
+//    the SPEC 14.22 symlink check; any finding refuses (exit 1) before
+//    modifying anything.
 //
-// The section form's rewrite engine is not built yet (FIX_PLAN T28): past
-// the shared checks above it refuses (exit 1) modifying nothing.
-//
-// Success writes the rewritten sources, removes the origin, appends the
-// journal entry, and regenerates; the report is the (empty) findings list —
-// with `--json`, the single JSON document (SPEC 12.0).
+// Success writes the rewritten sources, removes the origin (file form),
+// appends the journal entry, and regenerates; the report is the (empty)
+// findings list — with `--json`, the single JSON document (SPEC 12.0).
 
 import * as path from "node:path";
 import { computeBuildOutputs } from "../../core/build.js";
@@ -56,9 +69,13 @@ import type {
   SourceClassification,
 } from "../../core/discovery.js";
 import type { ExitCode, Finding } from "../../core/findings.js";
+import type { SpecFileAnalysis } from "../../core/graph.js";
+import type { SpecSection } from "../../core/mdx.js";
+import type { SpecReference } from "../../core/spec-references.js";
 import { JOURNAL_PATH, serializeJournalEntry } from "../../core/journal.js";
-import type { MoveFilePlan } from "../../core/move.js";
-import { planMoveFile } from "../../core/move.js";
+import type { MoveFilePlan, MoveSectionPlan } from "../../core/move.js";
+import { planMoveFile, planMoveSection } from "../../core/move.js";
+import { replaceIdPrefix } from "../../core/rename.js";
 import { executeBuildOutputs } from "../../workspace/build.js";
 import type { LoadedWorkspace } from "../../workspace/config.js";
 import { loadGraphData } from "../../workspace/graph-data.js";
@@ -73,7 +90,7 @@ import {
   analyzeWorkspace,
   analyzeWorkspaceContent,
 } from "../../workspace/pipeline.js";
-import { classifyOccupant } from "../../workspace/writes.js";
+import { classifyOccupant, describeOccupant } from "../../workspace/writes.js";
 import {
   removeSourceFile,
   symlinkWritePathFindings,
@@ -83,7 +100,7 @@ import type { Invocation } from "../args.js";
 import { isValidUtf8ArgumentValue } from "../args.js";
 import type { CliWriter, CommandContext } from "../io.js";
 import { emitConfigurationErrors, emitFindingsReport } from "../report.js";
-import { testHoldSpecOf, usageError } from "./common.js";
+import { requirementIdProblem, testHoldSpecOf, usageError } from "./common.js";
 
 /**
  * SPEC 6.5/12.0: a refused move is a validation failure — exit 1, the
@@ -280,6 +297,91 @@ async function fileDestinationProblem(
   return { specGroups };
 }
 
+/**
+ * SPEC 6.5 (section form): why a target file that is not already a
+ * discovered spec source cannot be created at `destination`, or its spec
+ * groups when it can. The same destination-validity family as the file
+ * form — the path must be a valid discovered spec source after the move —
+ * except that the path must be unoccupied (an occupied path that is no
+ * discovered spec source can never become one by insertion).
+ */
+async function sectionDestinationProblem(
+  workspace: LoadedWorkspace,
+  destination: string,
+): Promise<{ readonly problem: string } | { readonly specGroups: string[] }> {
+  if (!isValidUtf8ArgumentValue(destination)) {
+    return {
+      problem:
+        `the target file path is not valid UTF-8 — a discovered source ` +
+        `file's workspace-relative path must be valid UTF-8 (SPEC 6.5, 7, ` +
+        `14.19)`,
+    };
+  }
+  const shape = destinationShapeProblem(destination);
+  if (shape !== null) {
+    return {
+      problem:
+        `the target file path ${JSON.stringify(destination)} is not a ` +
+        `well-formed workspace-relative path: ${shape} (SPEC 6.5)`,
+    };
+  }
+  const bytes = utf8Encoder.encode(destination);
+  const specGroups = matchingGroups(workspace.configuration.specGroups, bytes);
+  if (specGroups.length === 0) {
+    return {
+      problem:
+        `the target file path ${JSON.stringify(destination)} belongs to no ` +
+        `configured spec group — a move never takes a node out of the ` +
+        `workspace; choose a target a spec group's globs match (SPEC 6.5, 7)`,
+    };
+  }
+  const codeGroups = matchingGroups(workspace.configuration.codeGroups, bytes);
+  if (codeGroups.length > 0) {
+    return {
+      problem:
+        `the target file path ${JSON.stringify(destination)} is matched by ` +
+        `spec group "${specGroups[0]!}" and code group "${codeGroups[0]!}" ` +
+        `alike — no file may belong to both a spec and a code group ` +
+        `(SPEC 6.5, 7.2, 14.14)`,
+    };
+  }
+  if (!destination.endsWith(".mdx")) {
+    return {
+      problem:
+        `the target file path ${JSON.stringify(destination)} lacks the ` +
+        `.mdx extension — every spec-group source must end ".mdx" ` +
+        `(SPEC 6.5, 7.1, 14.19)`,
+    };
+  }
+  const fileName = destination.slice(destination.lastIndexOf("/") + 1);
+  if (fileName.includes(".xspec.") || destination.startsWith(".xspec/")) {
+    return {
+      problem:
+        `the target file path ${JSON.stringify(destination)} is a ` +
+        `derived-file path (a file name containing ".xspec." or a path ` +
+        `under ".xspec/") — derived-file paths are never discovered as ` +
+        `sources (SPEC 6.5, 13.4)`,
+    };
+  }
+  // The path passed every rule yet is no discovered spec source, so
+  // something undiscoverable occupies it (a directory, a symbolic link —
+  // discovery never follows them, SPEC 7) — or nothing does and the move
+  // creates the file (SPEC 6.5).
+  const occupant = await classifyOccupant(
+    path.join(workspace.root, ...destination.split("/")),
+  );
+  if (occupant !== "absent") {
+    return {
+      problem:
+        `the target file path ${JSON.stringify(destination)} is occupied ` +
+        `by ${describeOccupant(occupant)} that is not a discovered spec ` +
+        `source — the target of a section move must be a discovered spec ` +
+        `source or a creatable spec-source path (SPEC 6.5, 7)`,
+    };
+  }
+  return { specGroups };
+}
+
 /** Concatenate byte arrays (the hypothetical post-append journal bytes). */
 function concatBytes(parts: readonly Uint8Array[]): Uint8Array {
   let total = 0;
@@ -379,14 +481,17 @@ async function runMove(
   }
 
   if (origin.id !== null) {
-    // FIX_PLAN T28: the section form's extraction, text edits, reference
-    // conversion, and import rewrites are not built yet. Refuse (exit 1)
-    // modifying nothing, inside the SPEC 12.0 exit partition.
-    return emitRefusal(
-      invocation.json,
-      stdout,
-      `the section form of \`xspec move\` is not implemented in this build ` +
-        `(SPEC 6.5)`,
+    if (destination.id === null) {
+      throw new Error("xspec internal error: section move without a new ID");
+    }
+    return runMoveSection(
+      invocation,
+      context,
+      analysis,
+      originSpec,
+      origin.id,
+      destination.file,
+      destination.id,
     );
   }
 
@@ -548,6 +653,298 @@ async function reanalyzeMoved(
     codeSources: analysis.classification.codeSources,
     findings: [],
   };
+  const currentJournal = await readJournalBytes(workspace.root);
+  const entryLine = encoder.encode(serializeJournalEntry(plan.entry) + "\n");
+  const journalBytes = concatBytes(
+    currentJournal === null ? [entryLine] : [currentJournal, entryLine],
+  );
+  return analyzeWorkspaceContent(workspace.configuration, {
+    classification,
+    readSource: (rel) => Promise.resolve(byPath.get(rel) ?? null),
+    loadJournal: () => Promise.resolve(journalFromBytes(journalBytes)),
+  });
+}
+
+/** The section form (SPEC 6.5), past the shared argument and precondition checks. */
+async function runMoveSection(
+  invocation: Invocation,
+  context: CommandContext,
+  analysis: WorkspaceAnalysis,
+  originSpec: SpecFileAnalysis,
+  oldId: string,
+  targetPath: string,
+  newId: string,
+): Promise<ExitCode> {
+  const { workspace, stdout, stderr } = context;
+  const originPath = originSpec.document.path;
+  const sameFile = targetPath === originPath;
+  const inMovedSubtree = (id: string): boolean =>
+    id === oldId || id.startsWith(`${oldId}.`);
+
+  // SPEC 6.5: resolve the target file — the origin itself, another
+  // discovered spec source, or a creatable spec-source path (the
+  // destination-validity refusal family; each reason refuses, exit 1,
+  // before modifying anything).
+  let targetSpec: SpecFileAnalysis | null;
+  let createGroups: readonly string[] | null = null;
+  if (sameFile) {
+    targetSpec = originSpec;
+  } else {
+    const found = analysis.specs.find(
+      (spec) => spec.document.path === targetPath,
+    );
+    if (found !== undefined) {
+      targetSpec = found;
+    } else {
+      const result = await sectionDestinationProblem(workspace, targetPath);
+      if ("problem" in result) {
+        return emitRefusal(invocation.json, stdout, result.problem);
+      }
+      targetSpec = null;
+      createGroups = result.specGroups;
+    }
+  }
+
+  // SPEC 6.5 (identity terms): the new identity must differ from the old —
+  // the exact self-move is refused and appends no journal entry, while a
+  // cross-file move keeping its ID is valid.
+  if (sameFile && newId === oldId) {
+    return emitRefusal(
+      invocation.json,
+      stdout,
+      `'${targetPath}#${newId}' is the moved section's own identity — the ` +
+        `exact self-move is refused (SPEC 6.5)`,
+    );
+  }
+
+  // SPEC 6.5 → 1.4: the new ID must be valid. A `<new-id>` that is not
+  // valid UTF-8 cannot be written into a source file faithfully (argv bytes
+  // that do not decode are irrecoverable; see cli/args.ts).
+  if (!isValidUtf8ArgumentValue(newId)) {
+    return emitRefusal(
+      invocation.json,
+      stdout,
+      `the new ID is not valid UTF-8 — requirement IDs are decoded UTF-8 ` +
+        `content (SPEC 6.5, 1.6)`,
+    );
+  }
+  const invalid = requirementIdProblem(newId);
+  if (invalid !== null) {
+    return emitRefusal(
+      invocation.json,
+      stdout,
+      `the new ID ${JSON.stringify(newId)} is not a valid requirement ID: ` +
+        `${invalid} (SPEC 1.4, 6.5)`,
+    );
+  }
+
+  // SPEC 6.5: `<new-id>` must collide with no ID remaining in the target
+  // file after the removal — the moved subtree's own IDs are vacated by it.
+  if (
+    targetSpec !== null &&
+    targetSpec.document.sections.some(
+      (section) =>
+        section.id === newId && !(sameFile && inMovedSubtree(section.id)),
+    )
+  ) {
+    return emitRefusal(
+      invocation.json,
+      stdout,
+      `the new ID ${JSON.stringify(newId)} collides with an ID remaining ` +
+        `in '${targetPath}' after the removal — IDs are unique within a ` +
+        `source file (SPEC 1.3, 6.5)`,
+    );
+  }
+
+  // SPEC 6.5: the target parent — the target file's section bearing
+  // `<new-id>` minus its final segment, needed whenever `<new-id>` has more
+  // than one segment — must exist and lie outside the moved subtree,
+  // leaving an insertion point after the removal (the mirrored structural
+  // parent rule, SPEC 1.3).
+  const newSegments = newId.split(".");
+  if (newSegments.length > 1) {
+    const parentId = newSegments.slice(0, -1).join(".");
+    const parent = targetSpec?.document.sections.find(
+      (section) => section.id === parentId,
+    );
+    if (parent === undefined) {
+      return emitRefusal(
+        invocation.json,
+        stdout,
+        `the target parent '${targetPath}#${parentId}' — the section ` +
+          `bearing the new ID minus its final segment — does not exist in ` +
+          `the target file (SPEC 6.5, 1.3)`,
+      );
+    }
+    if (sameFile && inMovedSubtree(parentId)) {
+      return emitRefusal(
+        invocation.json,
+        stdout,
+        `the target parent '${targetPath}#${parentId}' lies within the ` +
+          `moved subtree, leaving no insertion point after the removal ` +
+          `(SPEC 6.5)`,
+      );
+    }
+  }
+
+  // SPEC 6.5 → 2.2: a moved reference targeting the target file's root node
+  // has no rewritable spelling — the local form names IDs in the same file,
+  // never its root — so the move refuses rather than leave an unresolvable
+  // rewrite ("all rewritten references resolve").
+  if (!sameFile) {
+    const targetsRootOfTarget = (
+      section: SpecSection,
+      reference: SpecReference,
+    ): boolean =>
+      section.id !== null &&
+      inMovedSubtree(section.id) &&
+      reference.target.kind === "external" &&
+      reference.target.modulePath === targetPath &&
+      reference.target.segments.length === 0;
+    const offends =
+      originSpec.references.dependencies.some((dependency) =>
+        targetsRootOfTarget(dependency.section, dependency.reference),
+      ) ||
+      originSpec.references.embeddings.some(
+        (embedding) =>
+          embedding.reference !== null &&
+          targetsRootOfTarget(embedding.embedding.section, embedding.reference),
+      );
+    if (offends) {
+      return emitRefusal(
+        invocation.json,
+        stdout,
+        `a reference within the moved subtree targets the target file's ` +
+          `root node — the local reference form names IDs in its own file, ` +
+          `never the file's root, so no rewrite of it can resolve after ` +
+          `the move (SPEC 6.5, 2.2)`,
+      );
+    }
+  }
+
+  // The pure plan: the identity mapping, the journal entry, the exact text
+  // edits, and every reference and import rewrite (SPEC 6.5, 6.1).
+  const plan = planMoveSection(
+    analysis.specs,
+    analysis.code,
+    originPath,
+    oldId,
+    targetPath,
+    newId,
+  );
+
+  // Re-validate the rewritten workspace in memory before touching anything
+  // (SPEC 6.5: all rewritten references resolve, structural rules hold, and
+  // no import or dependency cycle arises — 2.1, 5.3 — so the finishing
+  // regeneration cannot fail). The journal is modeled as it will stand
+  // after the append (SPEC 5.4).
+  const rewritten = await reanalyzeSectionMoved(
+    workspace,
+    analysis,
+    plan,
+    targetPath,
+    createGroups,
+  );
+  if (rewritten.configurationErrors.length > 0) {
+    // Unreachable: the configuration is untouched and a created target was
+    // validated against the same group rules discovery applies. Guarded so
+    // a regression reports rather than corrupts.
+    emitConfigurationErrors(stderr, rewritten.configurationErrors);
+    return 2;
+  }
+  if (rewritten.findings.length > 0) {
+    // SPEC 6.5: the rewrite would not leave a valid workspace — a move
+    // creating an import or dependency cycle lands here — refuse with the
+    // would-be findings, nothing modified.
+    return emitFindingsRefusal(invocation.json, stdout, rewritten.findings);
+  }
+
+  // SPEC 6.5/6.4/12.1: the finishing regeneration's outputs, derived
+  // exactly as `xspec build` derives them — over the rewritten analyses.
+  const stored = await loadGraphData(workspace.root);
+  const outputs = computeBuildOutputs(
+    workspace.configuration,
+    rewritten.specs,
+    rewritten.graph,
+    rewritten.textModel,
+    rewritten.hashes,
+    stored.data,
+  );
+
+  // SPEC 14.22: validate the complete write set — rewritten sources (a
+  // created target included), the journal, and every regenerated file —
+  // before modifying anything.
+  const writeFindings = await symlinkWritePathFindings(workspace.root, [
+    ...plan.rewrites.map((rewrite) => rewrite.path),
+    JOURNAL_PATH,
+    ...outputs.writePaths,
+  ]);
+  if (writeFindings.length > 0) {
+    return emitFindingsRefusal(invocation.json, stdout, writeFindings);
+  }
+
+  // All validation passed — modify: write the rewritten sources (atomic per
+  // file, SPEC 13.5; the origin keeps its path, the target gains the moved
+  // text), append the mapping to the journal (SPEC 6.1, 6.5), and
+  // regenerate derived files exactly as `xspec build` does (SPEC 6.5, 6.4).
+  for (const rewrite of plan.rewrites) {
+    await writeSourceFile(workspace.root, rewrite.path, rewrite.content);
+  }
+  await appendJournalEntry(workspace.root, plan.entry);
+  await executeBuildOutputs(workspace.root, outputs);
+
+  if (invocation.json) {
+    // SPEC 12.0: one JSON document as the entire standard output — the
+    // successful move's report is its (empty) findings list.
+    emitFindingsReport(true, stdout, []);
+  }
+  return 0;
+}
+
+/**
+ * Analyze the section-moved workspace entirely in memory: the same
+ * classification (extended by a created target file, grouped exactly as
+ * discovery would group it, SPEC 7), sources served from the rewrite plan
+ * (unaffected files from the already-analyzed text), and the journal as it
+ * will stand after the append (SPEC 6.5, 5.4).
+ */
+async function reanalyzeSectionMoved(
+  workspace: LoadedWorkspace,
+  analysis: WorkspaceAnalysis,
+  plan: MoveSectionPlan,
+  targetPath: string,
+  createGroups: readonly string[] | null,
+): Promise<WorkspaceAnalysis> {
+  const encoder = new TextEncoder();
+  const byPath = new Map<string, Uint8Array>();
+  for (const spec of analysis.specs) {
+    byPath.set(spec.document.path, encoder.encode(spec.document.text));
+  }
+  for (const code of analysis.code) {
+    byPath.set(code.path, encoder.encode(code.text));
+  }
+  for (const rewrite of plan.rewrites) {
+    byPath.set(rewrite.path, rewrite.content);
+  }
+  let classification: SourceClassification = analysis.classification;
+  if (plan.createsTargetFile) {
+    if (createGroups === null) {
+      throw new Error(
+        "xspec internal error: a created move target without its spec groups",
+      );
+    }
+    const created: DiscoveredSource = {
+      path: targetPath,
+      groups: createGroups,
+    };
+    classification = {
+      specSources: [...analysis.classification.specSources, created].sort(
+        (a, b) => compareBytes(a.path, b.path),
+      ),
+      codeSources: analysis.classification.codeSources,
+      findings: analysis.classification.findings,
+    };
+  }
   const currentJournal = await readJournalBytes(workspace.root);
   const entryLine = encoder.encode(serializeJournalEntry(plan.entry) + "\n");
   const journalBytes = concatBytes(
