@@ -44,11 +44,6 @@ signature. The entire pipeline must be built; tasks below are dependency-ordered
 
 ## Tasks
 
-- [ ] **T39 — green sweep: SPEC sections 8–13 suite files.**
-  Run section-8, 9, 9.3, 10.*, 11, 12.*, 13.*; fix all residual product defects. Closes
-  Finding 2 gaps 2–20.
-  Verify: all those files green; list any that are not, with diagnosis.
-
 - [ ] **T40 — full-suite green: example, properties, E-6, CI.**
   Run `npm test` in full: section-15 (the SPEC 15 worked example end to end, rename-then-
   no-impact included), section-16-p1…p10 (TEST-SPEC 16 property tests, fixed seed set),
