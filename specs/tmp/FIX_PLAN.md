@@ -44,22 +44,6 @@ signature. The entire pipeline must be built; tasks below are dependency-ordered
 
 ## Tasks
 
-- [ ] **T35 — `xspec check` and policy evaluation.**
-  In `src/cli/` + `src/core/` (SPEC 12.2): all build validations without accepting stale
-  outputs, never refreshing (13.3), plus: staleness — generated files content-identical to
-  what current sources+config generate, no recorded derived file at a no-longer-generated
-  path (14.10, check-only, names the file, instructs rebuilding); reference resolution and
-  staticness; TS spec references; dependency and import cycles; journal well-formed and
-  replayable with no conflicting mappings (14.13); review-session integrity (14.21, without
-  modifying); symlink findings reported without writing (14.22); policy evaluation (SPEC
-  7.5): `forbidden` (edge source matches `from` and target matches `to` = violation) and
-  `allowedOnly` (edge whose source matches `from` and target does not match `to` =
-  violation) over the rule's kinds, selectors by group/files (T2 captures)/tags, violations
-  reported with rule name + offending edge — by `check` only (14.12), exit 1 on any finding.
-  Configuration validity stays a usage error, not a finding. Satisfies Finding 2 gap 17
-  (check half); Finding 1 gap 7 (7.5 evaluation).
-  Verify: section-12.1-12.2, section-7.4-7.5; section-13.3, 13.4, 6.1 residuals.
-
 - [ ] **T36 — SPEC 12.0 conventions sweep.**
   Run section-12.0-i, section-12.0-ii, section-12.3-12.5 and fix every remaining global-
   convention gap across all commands (SPEC 12.0): `--json` single-document rule and exit-2

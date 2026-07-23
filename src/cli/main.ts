@@ -12,6 +12,7 @@ import { loadWorkspace } from "../workspace/config.js";
 import type { Invocation } from "./args.js";
 import { COMMAND_PATHS, parseArgv } from "./args.js";
 import { buildCommand } from "./commands/build.js";
+import { checkCommand } from "./commands/check.js";
 import { coverageCommand } from "./commands/coverage.js";
 import { idsCommand } from "./commands/ids.js";
 import { impactCommand } from "./commands/impact.js";
@@ -40,29 +41,16 @@ export type CommandHandler = (
   context: CommandContext,
 ) => Promise<ExitCode>;
 
-/**
- * Temporary Phase-10 scaffolding (FIX_PLAN T3): the command parses per
- * SPEC 12.0 but its behavior is not built yet. It exits 2 with an explicit
- * stderr diagnostic and an empty standard output — inside the SPEC 12.0 exit
- * partition and consistent with the exit-2 stream rule (with `--json`, an
- * exit-2 error prevents emitting the single JSON document, so standard
- * output is empty). Removed as later tasks land each command's behavior.
- */
-const notImplemented: CommandHandler = (invocation, context) => {
-  context.stderr.write(`xspec: ${invocation.command}: not implemented\n`);
-  return Promise.resolve(2);
-};
-
-/**
- * The dispatch table: one handler per SPEC 12.5 command path. Later tasks
- * replace the remaining `notImplemented` entries with real implementations.
- */
+/** The dispatch table: one handler per SPEC 12.5 command path. */
 const HANDLERS: ReadonlyMap<string, CommandHandler> = new Map(
   COMMAND_PATHS.map((path): [string, CommandHandler] => {
     switch (path) {
       case "build":
         // SPEC 12.1.
         return [path, buildCommand];
+      case "check":
+        // SPEC 12.2.
+        return [path, checkCommand];
       case "ids":
         // SPEC 12.3.
         return [path, idsCommand];
@@ -114,7 +102,10 @@ const HANDLERS: ReadonlyMap<string, CommandHandler> = new Map(
         // SPEC 6.5.
         return [path, moveCommand];
       default:
-        return [path, notImplemented];
+        // Unreachable: every SPEC 12.5 command path is cased above.
+        // Guarded so a command-table addition without a handler fails
+        // loudly at module load.
+        throw new Error(`no handler implemented for command '${path}'`);
     }
   }),
 );

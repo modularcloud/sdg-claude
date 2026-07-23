@@ -78,6 +78,18 @@ function findingToJson(finding: Finding): JsonObject {
     line: finding.line,
     column: finding.column,
     cycle: finding.cycle === undefined ? undefined : [...finding.cycle],
+    // SPEC 7.5 → 14.12: a policy violation carries the rule name and the
+    // offending edge; the JSON form holds the same information as the
+    // human message (SPEC 12.0), structured.
+    rule: finding.rule,
+    edge:
+      finding.edge === undefined
+        ? undefined
+        : {
+            from: finding.edge.source,
+            to: finding.edge.target,
+            kind: finding.edge.kind,
+          },
   };
 }
 

@@ -79,6 +79,18 @@ export const CONDITIONS: Readonly<Record<ConditionNumber, ConditionInfo>> = {
 };
 
 /**
+ * SPEC 5.2/7.5 → 14.12: the offending edge a policy-violation finding
+ * carries, endpoints as graph-node identities. Structurally identical to
+ * the graph layer's `GraphEdge` (core/graph.ts), restated here so the
+ * finding model stays dependency-free.
+ */
+export interface FindingEdge {
+  readonly kind: "contains" | "depends" | "embeds" | "references";
+  readonly source: string;
+  readonly target: string;
+}
+
+/**
  * One validation failure, carried as data and rendered later by the CLI.
  * The structured fields identify the file and location; `message` (with
  * `correction`, when separate) states what is wrong and how to correct it,
@@ -105,6 +117,10 @@ export interface Finding {
    * first element repeated at the end; a length-one cycle is `[a, a]`.
    */
   readonly cycle?: readonly string[];
+  /** SPEC 7.5 → 14.12: the violated policy rule's name. */
+  readonly rule?: string;
+  /** SPEC 7.5 → 14.12: the offending edge. */
+  readonly edge?: FindingEdge;
 }
 
 /** The exit class of a finding's condition (SPEC 12.0, 14.14). */
