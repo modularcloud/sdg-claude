@@ -51,7 +51,12 @@
 import { compareBytes } from "./bytes.js";
 import { canonicalJson } from "./canonical-json.js";
 import type { JsonObject, JsonValue } from "./canonical-json.js";
-import type { DependencyEdgeKind } from "./config.js";
+import type {
+  Configuration,
+  ConfiguredGroup,
+  CoverageProfile,
+  DependencyEdgeKind,
+} from "./config.js";
 import { DEPENDENCY_EDGE_KINDS } from "./config.js";
 import type { Finding } from "./findings.js";
 
@@ -329,6 +334,47 @@ export type SessionParameters =
   | { readonly strategy: "coverage"; readonly profile: RecordedProfile };
 
 /**
+ * SPEC 10.7: resolve a configured coverage profile into the recorded form a
+ * `coverage` session's `create` stores — the profile's 7.4 fields with each
+ * group name replaced by that group's configured glob list and kind.
+ * Renaming or editing refs, profiles, or groups after `create` never changes
+ * the recorded parameters the session runs with. The configuration is
+ * validated (SPEC 14.14), so the referenced groups exist and are of the
+ * required kinds; a miss is an internal error, never a user-facing state.
+ */
+export function recordCoverageProfile(
+  configuration: Configuration,
+  profile: CoverageProfile,
+): RecordedProfile {
+  const groupOf = (kind: "spec" | "code", name: string): ConfiguredGroup => {
+    const groups =
+      kind === "spec" ? configuration.specGroups : configuration.codeGroups;
+    const group = groups.find((candidate) => candidate.name === name);
+    if (group === undefined) {
+      throw new Error(
+        `xspec internal error: the validated configuration names no ` +
+          `${kind} group ${JSON.stringify(name)} (SPEC 7.4, 14.14)`,
+      );
+    }
+    return group;
+  };
+  // SPEC 7.4: `target` is a spec group; `boundary`'s kind was resolved at
+  // configuration load (inferred when unambiguous, else as given).
+  const target = groupOf("spec", profile.target);
+  const boundary = groupOf(profile.boundaryKind, profile.boundary);
+  return {
+    name: profile.name,
+    target: { kind: "spec", globs: [...target.patterns] },
+    targetTags:
+      profile.targetTags === undefined ? undefined : [...profile.targetTags],
+    targets: profile.targets,
+    boundary: { kind: profile.boundaryKind, globs: [...boundary.patterns] },
+    mode: profile.mode,
+    edgeKinds: [...profile.edgeKinds],
+  };
+}
+
+/**
  * SPEC 10.7: one recorded `split` decomposition — the original item's kind
  * and scope node; the replacement (per-child `subtree-coherence` items plus
  * the scope node's `parent-consistency` item) is computed against the
@@ -465,7 +511,12 @@ export function corruptSessionOccupantFinding(
 // Serialization (SPEC 10.1: plain, deterministic; 13.4: stably keyed)
 // ---------------------------------------------------------------------------
 
-function recordedStateToJson(state: RecordedState): JsonValue {
+/**
+ * A recorded state (SPEC 10.4) as JSON data — the stored form, also the
+ * `baseline`/`current` members of the read payloads (SPEC 10.7: reads
+ * report both fields as recorded).
+ */
+export function recordedStateToJson(state: RecordedState): JsonValue {
   const nodes: Record<string, JsonValue> = {};
   for (const [identity, node] of Object.entries(state.nodes)) {
     nodes[identity] = node.present
@@ -504,7 +555,13 @@ function itemToJson(item: ReviewItem): JsonObject {
   };
 }
 
-function parametersToJson(parameters: SessionParameters): JsonObject {
+/**
+ * The recorded creation parameters as JSON data (SPEC 10.7) — the stored
+ * form, also `export`'s `creationParameters` member: the resolved commit
+ * for a baseline session, the resolved profile definition for a `coverage`
+ * session, nothing for `audit`.
+ */
+export function parametersToJson(parameters: SessionParameters): JsonObject {
   switch (parameters.strategy) {
     case "path-blocks":
       // SPEC 10.7: the commit identity `--base` resolved to at creation.

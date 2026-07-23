@@ -44,25 +44,6 @@ signature. The entire pipeline must be built; tasks below are dependency-ordered
 
 ## Tasks
 
-- [ ] **T33 — review commands: `create`, `list`, `status`, `show`, `export`.**
-  In `src/cli/` (SPEC 10.7): `create` requires exactly one of `--base <ref>` (path-blocks),
-  `--strategy audit`, `--coverage <profile>` — none/multiple/other strategy = usage error;
-  records fully resolved creation parameters (resolved commit identity; profile definition
-  with group names replaced by configured glob lists and kind; nothing for audit); later
-  generator runs use recorded parameters while discovery follows current config; refuses an
-  existing session name (case-insensitively per 10.1) exit 1; unresolvable baseline → 6.3
-  usage error exit 2, nothing modified. `list`: every session in byte order with name,
-  strategy, item counts by stored status (no read-time invalidation); corrupt sessions
-  reported by name as corrupt; exit 1 when any is corrupt, else 0. `status <name>`: items in
-  item order with id, kind, scope, status, blocked state, plus totals. `show <name>
-  <item-id>`: every 10.2 field plus the same self-contained text payload as `next --json`.
-  `export <name>`: the entire session as a single JSON document (its only output form):
-  name, strategy, recorded parameters and decompositions, every item in order with all
-  fields, blocked state, text payload, read-time invalidation applied. Unknown session/item
-  in any review command = usage error exit 2. Mutating ones under T25 exclusion. Satisfies
-  Finding 2 gap 14 (first half).
-  Verify: section-10.1, 10.2-10.3, 10.7-i move; run and report.
-
 - [ ] **T34 — review commands: `next`, `split`, `resolve`.**
   In `src/cli/` + `src/core/` (SPEC 10.7): `next <name>` — first item in item order needing
   review (`unresolved`/`invalidated`) and unblocked; when none, report fully resolved, exit

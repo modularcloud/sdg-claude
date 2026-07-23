@@ -18,6 +18,13 @@ import { impactCommand } from "./commands/impact.js";
 import { moveCommand } from "./commands/move.js";
 import { queryCommand } from "./commands/query.js";
 import { renameCommand } from "./commands/rename.js";
+import {
+  reviewCreateCommand,
+  reviewExportCommand,
+  reviewListCommand,
+  reviewShowCommand,
+  reviewStatusCommand,
+} from "./commands/review.js";
 import { showCommand } from "./commands/show.js";
 import type { CliWriter, CommandContext } from "./io.js";
 import { emitConfigurationErrors } from "./report.js";
@@ -71,6 +78,21 @@ const HANDLERS: ReadonlyMap<string, CommandHandler> = new Map(
       case "query reachable":
         // SPEC 11.
         return [path, queryCommand];
+      case "review create":
+        // SPEC 10.7.
+        return [path, reviewCreateCommand];
+      case "review list":
+        // SPEC 10.7.
+        return [path, reviewListCommand];
+      case "review status":
+        // SPEC 10.7.
+        return [path, reviewStatusCommand];
+      case "review show":
+        // SPEC 10.7.
+        return [path, reviewShowCommand];
+      case "review export":
+        // SPEC 10.7.
+        return [path, reviewExportCommand];
       case "rename":
         // SPEC 6.4.
         return [path, renameCommand];
