@@ -69,10 +69,17 @@
 // denotes two distinct canonical identities that never collide. The state
 // computation here keys its result canonically — descendants and impact
 // targets enumerated from the current graph are canonicalized against the
-// full current journal — and derives a reference's current spelling
-// (`currentSpellingOf`, SPEC 6.3) only to look nodes, hashes, and texts up
-// in the graph state. This module owns the reference codec seam
-// (`canonicalKeyOfCurrent`, `spellingOfReference`, `referenceOf`) the
+// full current journal — and judges presence by canonical resolution
+// (SPEC 10.4: "a node is absent when it is deleted or its identity ceases
+// to resolve through the journal"): a recorded node is present iff its
+// canonical identity still resolves through the journal
+// (`resolvesCurrently`) AND the graph holds a node at its derived current
+// spelling — never by the spelling lookup alone, which would let a
+// dangling reference alias the distinct node that recaptured its
+// spelling. Spellings (`currentSpellingOf`, SPEC 6.3) serve presentation
+// and, for a resolving reference, the graph, hash, and text lookups. This
+// module owns the reference codec seam (`canonicalKeyOfCurrent`,
+// `parseReference`, `spellingOfReference`, `resolveReference`) the
 // derivation and presentation layers share.
 //
 // Everything here is pure: item validity is recomputed against the current
@@ -90,6 +97,7 @@ import {
   currentSpellingOf,
   encodeCanonicalIdentity,
   parseCanonicalIdentity,
+  resolvesCurrently,
 } from "./journal.js";
 import type {
   ItemKind,
@@ -235,20 +243,23 @@ export function computeRecordedState(
 /**
  * The scope-node references of a `subtree-coherence` item (SPEC 10.5: the
  * root and all descendants), in document order: the stored scope reference
- * resolved to a current spelling, the subtree derived from the graph the
- * state is computed against, and each member canonicalized against the full
- * journal (module header). A root whose spelling resolves to no node has no
- * descendants there and contributes its stored reference alone. Deriving
- * the set identically at record and at check keeps the two computations
- * structurally aligned (module header).
+ * canonically resolved to a current node, the subtree derived from the
+ * graph the state is computed against, and each member canonicalized
+ * against the full journal (module header). A root that does not resolve
+ * to a current node — deleted, or its identity ceased to resolve
+ * (SPEC 10.4) even though its derived spelling is borne by a distinct
+ * recaptured node — has no descendants and contributes its stored
+ * reference alone. Deriving the set identically at record and at check
+ * keeps the two computations structurally aligned (module header).
  */
 function scopeSubtreeReferences(
   inputs: ReviewStateInputs,
   scope: string,
 ): string[] {
-  const root = inputs.graph.requirementNode(
-    spellingOfReference(inputs.journal, scope),
-  );
+  const resolution = resolveReference(inputs.journal, scope);
+  const root = resolution.resolves
+    ? inputs.graph.requirementNode(resolution.spelling)
+    : undefined;
   if (root === undefined) {
     return [scope];
   }
@@ -268,29 +279,33 @@ function scopeSubtreeReferences(
   return references;
 }
 
-/** One node's recorded state (SPEC 10.4): presence, and the required hash
- * values for a present node — the absent marker otherwise. The node's
- * canonical reference decodes to its current spelling for the graph and
- * hash lookups. */
+/** One node's recorded state (SPEC 10.4): presence judged by canonical
+ * resolution (module header) — the node is present iff its canonical
+ * identity still resolves through the journal AND the graph holds a node
+ * at the derived spelling — and the required hash values for a present
+ * node, the absent marker otherwise. Hashes are read only for a resolving,
+ * present node. */
 function recordedNodeState(
   item: ItemStateSpec,
   reference: string,
   names: ReadonlySet<RecordedHashName>,
   inputs: ReviewStateInputs,
 ): RecordedNodeState {
-  const spelling = spellingOfReference(inputs.journal, reference);
+  const { spelling, resolves } = resolveReference(inputs.journal, reference);
   // SPEC 10.2/10.5: only a `code-impact` item's scope is a code location;
   // every other recorded node is a requirement node. A code location has no
   // hash values (SPEC 5.5 hashes requirement nodes), so its state is
   // presence alone.
   if (item.kind === "code-impact" && reference === item.scope) {
-    return inputs.graph.codeLocation(spelling) !== undefined
+    return resolves && inputs.graph.codeLocation(spelling) !== undefined
       ? { present: true, hashes: {} }
       : { present: false, hashes: "absent" };
   }
-  if (inputs.graph.requirementNode(spelling) === undefined) {
-    // SPEC 10.4: absent — deleted, or its identity ceased to resolve; the
-    // hashes are the explicit absent marker.
+  if (!resolves || inputs.graph.requirementNode(spelling) === undefined) {
+    // SPEC 10.4: absent — deleted, or its identity ceased to resolve
+    // through the journal (a dangling reference stays absent even when its
+    // derived spelling is borne by a distinct recaptured node); the hashes
+    // are the explicit absent marker.
     return { present: false, hashes: "absent" };
   }
   const hashes: Partial<Record<RecordedHashName, string>> = {};
@@ -430,6 +445,37 @@ export function spellingOfReference(
   reference: string,
 ): string {
   return currentSpellingOf(journal, parseReference(reference));
+}
+
+/** A stored reference's current resolution (`resolveReference`). */
+export interface ReferenceResolution {
+  /** The derived current spelling (SPEC 6.3) — total, presentation-grade
+   * whether or not the reference resolves. */
+  readonly spelling: string;
+  /** SPEC 10.4: whether the canonical identity still resolves through the
+   * journal — false exactly when a later entry recaptured the spelling for
+   * a different chain. */
+  readonly resolves: boolean;
+}
+
+/**
+ * Resolve a stored reference against the journal (SPEC 10.4): its derived
+ * current spelling plus whether its canonical identity still resolves.
+ * Every presence or state judgment requires both (module header): a node
+ * is present iff `resolves` holds AND the graph holds a node at
+ * `spelling` — a dangling reference whose spelling is borne by a distinct
+ * recaptured node is absent, while its spelling still names it for
+ * presentation.
+ */
+export function resolveReference(
+  journal: Journal,
+  reference: string,
+): ReferenceResolution {
+  const canonical = parseReference(reference);
+  return {
+    spelling: currentSpellingOf(journal, canonical),
+    resolves: resolvesCurrently(journal, canonical),
+  };
 }
 
 /**

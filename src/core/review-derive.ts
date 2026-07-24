@@ -71,10 +71,11 @@ import type {
   ReviewSession,
 } from "./review.js";
 import { allocateItemId, kindScopesCodeLocation } from "./review.js";
-import type { ReviewStateInputs } from "./review-state.js";
+import type { ReferenceResolution, ReviewStateInputs } from "./review-state.js";
 import {
   canonicalKeyOfCurrent,
   computeRecordedState,
+  resolveReference,
   spellingOfReference,
 } from "./review-state.js";
 import type { WorkspaceTextModel } from "./text-model.js";
@@ -463,13 +464,17 @@ export function expandDecompositions(
     expanding.add(scopeIdentity);
     try {
       // SPEC 10.5: one subtree-coherence item per *current* child subtree
-      // of the scope node — an absent scope node has no current children.
-      // The stored canonical scope resolves to a graph node through its
-      // derived spelling; the children, current-graph nodes, canonicalize
-      // against the full journal (module header).
-      const scopeNode = graph.requirementNode(
-        spellingOfReference(journal, scopeIdentity),
-      );
+      // of the scope node — an absent scope node (10.4: deleted, or its
+      // identity ceased to resolve through the journal) has no current
+      // children, so a dangling stored scope never enumerates the distinct
+      // node that recaptured its spelling. A canonically resolving scope
+      // reaches its graph node through its derived spelling; the children,
+      // current-graph nodes, canonicalize against the full journal (module
+      // header).
+      const resolution = resolveReference(journal, scopeIdentity);
+      const scopeNode = resolution.resolves
+        ? graph.requirementNode(resolution.spelling)
+        : undefined;
       const children: RequirementNode[] =
         scopeNode === undefined ? [] : graph.childrenOf(scopeNode);
       const childReferences = children.map((child) =>
@@ -842,6 +847,21 @@ function nodeTexts(
   };
 }
 
+/** A stored reference's texts in the current graph — null unless the
+ * reference canonically resolves to a present node (SPEC 10.4): text
+ * snapshots record only nodes present per 10.4, so a dangling reference
+ * never captures the text of the distinct node that recaptured its
+ * spelling. */
+function currentNodeTexts(
+  current: CurrentDerivationSide,
+  reference: string,
+): RecordedTexts | null {
+  const resolution = resolveReference(current.journal, reference);
+  return resolution.resolves
+    ? nodeTexts(current.graph, current.textModel, resolution.spelling)
+    : null;
+}
+
 /**
  * SPEC 10.7: the item's baseline text snapshots — the origin before-texts
  * and absent-node fallbacks come from the item's `baseline` state, so each
@@ -858,11 +878,7 @@ function baselineTextTable(
   for (const node of textBearingNodes(item)) {
     const texts =
       baseline === undefined
-        ? nodeTexts(
-            current.graph,
-            current.textModel,
-            spellingOfReference(current.journal, node.identity),
-          )
+        ? currentNodeTexts(current, node.identity)
         : node.baselineIdentity === null
           ? null
           : nodeTexts(
@@ -878,9 +894,9 @@ function baselineTextTable(
 }
 
 /** SPEC 10.7: the derivation-time text snapshots — every item node present
- * in the current graph records its texts, rewritten per node at each
- * derivation that finds it present and never removed (`previous` entries
- * for nodes absent now are kept). */
+ * per 10.4 (canonically resolving, in the current graph) records its
+ * texts, rewritten per node at each derivation that finds it present and
+ * never removed (`previous` entries for nodes absent now are kept). */
 function derivedTextTable(
   item: GeneratedItem,
   current: CurrentDerivationSide,
@@ -888,11 +904,7 @@ function derivedTextTable(
 ): RecordedTextTable {
   const table: Record<string, RecordedTexts> = { ...previous };
   for (const node of textBearingNodes(item)) {
-    const texts = nodeTexts(
-      current.graph,
-      current.textModel,
-      spellingOfReference(current.journal, node.identity),
-    );
+    const texts = currentNodeTexts(current, node.identity);
     if (texts !== null) {
       table[node.identity] = texts;
     }
@@ -1187,13 +1199,18 @@ export function splitItemDecomposition(
     };
   }
   // SPEC 10.7: a childless scope root is refused. The decomposition is per
-  // *current* child subtree (SPEC 10.5), so an absent scope root — with no
-  // current children — is childless here. The stored canonical scope
-  // resolves to a graph node through its derived spelling, which is also
-  // how the refusal names it (SPEC 10.4: nodes surface under current
-  // identities).
-  const scopeSpelling = spellingOfReference(current.journal, original.scope);
-  const scopeNode = current.graph.requirementNode(scopeSpelling);
+  // *current* child subtree (SPEC 10.5), so an absent scope root — deleted,
+  // or its identity ceased to resolve through the journal (SPEC 10.4) —
+  // has no current children and is childless here: a dangling scope never
+  // splits over the children of the distinct node that recaptured its
+  // spelling. A canonically resolving scope reaches its graph node through
+  // its derived spelling, which is also how the refusal names it
+  // (SPEC 10.4: nodes surface under current identities).
+  const scopeResolution = resolveReference(current.journal, original.scope);
+  const scopeSpelling = scopeResolution.spelling;
+  const scopeNode = scopeResolution.resolves
+    ? current.graph.requirementNode(scopeSpelling)
+    : undefined;
   const children =
     scopeNode === undefined ? [] : current.graph.childrenOf(scopeNode);
   if (children.length === 0) {
@@ -1466,29 +1483,28 @@ export function scopeFilePath(identity: string): string {
  * SPEC 10.5: the shared document-order tie-break ("wherever an item order
  * ranks by document order — here, in 10.6, and in 10.7"): among items tied
  * on every earlier key, those with present scope nodes come first, in
- * document order; those with absent scope nodes follow, ordered by
- * scope-node identity (the derived current spelling, SPEC 10.4: ordering
+ * document order; those with absent scope nodes (SPEC 10.4) follow,
+ * ordered by scope-node identity (the derived current spelling — ordering
  * compares scope nodes under their current identities), then by item id.
  * `spellingOf` maps an item to its scope's derived current spelling;
- * `positionOf` maps a present spelling to its document position
- * (undefined = absent, SPEC 10.4).
+ * `positionOf` maps an item to its scope's document position — undefined
+ * for a scope absent per 10.4, so a dangling scope whose spelling is borne
+ * by a distinct recaptured node takes the absent branch.
  */
 export function compareByDocumentOrder(
   a: ReviewItem,
   b: ReviewItem,
   spellingOf: (item: ReviewItem) => string,
-  positionOf: (identity: string) => number | undefined,
+  positionOf: (item: ReviewItem) => number | undefined,
 ): number {
-  const aSpelling = spellingOf(a);
-  const bSpelling = spellingOf(b);
-  const aPosition = positionOf(aSpelling);
-  const bPosition = positionOf(bSpelling);
+  const aPosition = positionOf(a);
+  const bPosition = positionOf(b);
   if (aPosition !== undefined && bPosition !== undefined) {
     return aPosition - bPosition;
   }
   if (aPosition !== undefined) return -1;
   if (bPosition !== undefined) return 1;
-  const byIdentity = compareBytes(aSpelling, bSpelling);
+  const byIdentity = compareBytes(spellingOf(a), spellingOf(b));
   if (byIdentity !== 0) return byIdentity;
   return compareBytes(a.id, b.id);
 }
@@ -1503,17 +1519,33 @@ function nodePositions(graph: WorkspaceGraph): ReadonlyMap<string, number> {
   return positions;
 }
 
-/** Per item, its scope's derived current spelling (SPEC 10.4: ordering
- * compares scope nodes under their current identities). */
-function scopeSpellings(
+/** Per item, its scope reference's current resolution (SPEC 10.4):
+ * ordering ranks by the derived current spelling, and a document position
+ * exists only for a canonically resolving scope — a dangling scope is
+ * absent (10.4) whatever node bears its spelling now. */
+function scopeResolutions(
   items: readonly ReviewItem[],
   journal: Journal,
-): (item: ReviewItem) => string {
-  const spellings = new Map<ReviewItem, string>();
+): (item: ReviewItem) => ReferenceResolution {
+  const resolutions = new Map<ReviewItem, ReferenceResolution>();
   for (const item of items) {
-    spellings.set(item, spellingOfReference(journal, item.scope));
+    resolutions.set(item, resolveReference(journal, item.scope));
   }
-  return (item): string => spellings.get(item) as string;
+  return (item): ReferenceResolution =>
+    resolutions.get(item) as ReferenceResolution;
+}
+
+/** The `positionOf` of `compareByDocumentOrder` over a graph's node order:
+ * an item's scope has a document position only when it canonically
+ * resolves to a present node (SPEC 10.5 over 10.4 presence). */
+function scopePositions(
+  resolutionOf: (item: ReviewItem) => ReferenceResolution,
+  positions: ReadonlyMap<string, number>,
+): (item: ReviewItem) => number | undefined {
+  return (item): number | undefined => {
+    const resolution = resolutionOf(item);
+    return resolution.resolves ? positions.get(resolution.spelling) : undefined;
+  };
 }
 
 /**
@@ -1533,10 +1565,9 @@ export function sortItemsPathBlocks(
   graph: WorkspaceGraph,
   journal: Journal,
 ): ReviewItem[] {
-  const positions = nodePositions(graph);
-  const positionOf = (identity: string): number | undefined =>
-    positions.get(identity);
-  const spellingOf = scopeSpellings(items, journal);
+  const resolutionOf = scopeResolutions(items, journal);
+  const spellingOf = (item: ReviewItem): string => resolutionOf(item).spelling;
+  const positionOf = scopePositions(resolutionOf, nodePositions(graph));
   return [...items].sort((a, b) => {
     const aCode = a.kind === "code-impact";
     const bCode = b.kind === "code-impact";
@@ -1578,10 +1609,9 @@ export function sortItemsByFileThenDocument(
   graph: WorkspaceGraph,
   journal: Journal,
 ): ReviewItem[] {
-  const positions = nodePositions(graph);
-  const positionOf = (identity: string): number | undefined =>
-    positions.get(identity);
-  const spellingOf = scopeSpellings(items, journal);
+  const resolutionOf = scopeResolutions(items, journal);
+  const spellingOf = (item: ReviewItem): string => resolutionOf(item).spelling;
+  const positionOf = scopePositions(resolutionOf, nodePositions(graph));
   return [...items].sort((a, b) => {
     const byPath = compareBytes(
       scopeFilePath(spellingOf(a)),

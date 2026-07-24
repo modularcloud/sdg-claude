@@ -118,13 +118,12 @@ at-most-one invariant compares canonical encodings byte-wise (`src/core/review.t
 `mapTextTable` deleted; reads and mutators consume the stored session as-is). Facts T43 needs:
 
 - The codec seam lives in `src/core/review-state.ts`: `canonicalKeyOfCurrent`, `parseReference`,
-  `spellingOfReference`, and `presentRecordedState` (presented `baseline`/`current` keep spelling
-  keys unless two canonically distinct recorded nodes of that one state share a forward-mapped
-  spelling; then the whole state keeps its stored canonical keys — deterministic, nothing dropped).
-  `ReviewStateInputs` gained `journal`; the old `scopeSubtreeIdentities` is now
-  `scopeSubtreeReferences` (canonical keys out, full-journal canonicalization of graph members);
-  `recordedNodeState` still judges presence by spelling lookup — exactly what T43 item 1 replaces
-  with `resolvesCurrently` + graph lookup.
+  `spellingOfReference`, `resolveReference` (T43), and `presentRecordedState` (presented
+  `baseline`/`current` keep spelling keys unless two canonically distinct recorded nodes of that
+  one state share a forward-mapped spelling; then the whole state keeps its stored canonical keys —
+  deterministic, nothing dropped). `ReviewStateInputs` gained `journal`; the old
+  `scopeSubtreeIdentities` is now `scopeSubtreeReferences` (canonical keys out, full-journal
+  canonicalization of graph members); `recordedNodeState` judges presence canonically since T43.
 - The generator seam is `canonicalizeGeneration` (`src/core/review-derive.ts`): generator files are
   untouched and stay spelling-space; the seam canonicalizes items, blocker refs (resolved through
   the generated items, current-graph-first on spelling collisions), the wrapped
@@ -133,56 +132,36 @@ at-most-one invariant compares canonical encodings byte-wise (`src/core/review.t
   `canonicalAt(journal, baselineJournalLength, baselineIdentity)`. `CurrentDerivationSide` gained
   `journal`; `BaselineDerivationSide` replaced `replay` with `journal` + `journalLength` (the
   baseline prefix length), and `computeBaselineRecordedState` keys subtree members via
-  `canonicalAt` — T43 item 2's "align its keys" is done; confirm no spelling lookup remains.
+  `canonicalAt` — T43 confirmed no spelling lookup remains there (everything resolves via
+  per-side `baselineIdentity`).
 - Ordering (`sortItemsPathBlocks`, `sortItemsByFileThenDocument`, `compareByDocumentOrder`) takes
   the journal and ranks by each scope's derived current spelling; the absent tie-break is spelling
-  bytes then item id — T43 item 5 re-judges *presence* (document position only for a canonically
-  resolving scope), not the key shape.
+  bytes then item id — since T43, a scope has a document position only when it canonically
+  resolves to a present node.
 - Verified: full suite 485/485 green, typecheck, format; the panel reproduction (steps 1–5) all
   exit 0, every subsequent read and `check` exit 0 with both items distinct and no status lost —
-  plus a second mutating subcommand and re-read staying clean. Presence/invalidation are still
-  spelling-judged (the reproduction's deletion item currently presents `present: true` under the
-  recaptured spelling) — that is T43's work, not a regression.
+  plus a second mutating subcommand and re-read staying clean.
 
-## T43 — Judge presence, state, and invalidation canonically
-
-**Satisfies:** SPEC 10.4 — "a node is absent when it is deleted or its identity ceases to resolve
-through the journal"; "an identity mapping from a journaled rename or move … by itself invalidates
-nothing — only hash, presence, or context-set changes invalidate"; SPEC 10.5/10.7 ordering and
-`split` over current identities and presence.
-
-Replace every spelling-lookup presence/state judgment with canonical resolution
-(`resolvesCurrently` + graph lookup at the derived spelling):
-
-1. `recordedNodeState` and `computeRecordedState` in
-   `/home/user/sdg-claude/src/core/review-state.ts`: a recorded node whose canonical identity no
-   longer resolves is absent (explicit absent marker) even when its forward-mapped spelling is
-   borne by a different node; hashes are read only for a resolving, present node.
-   `scopeSubtreeIdentities` contributes descendants only when the scope root canonically resolves
-   to a current node; otherwise the root alone.
-2. `computeBaselineRecordedState` in `review-derive.ts`: already resolves via per-side
-   `baselineIdentity`; align its keys with the canonical keying of T42 and confirm no spelling
-   lookup remains.
-3. Read payloads in `/home/user/sdg-claude/src/cli/commands/review-session.ts` (`nodeStateJson`,
-   `originEntryJson` after-side): presence and text/sourceRange come from canonical resolution —
-   a dangling recorded node is presented absent (no sourceRange; absent-node text provenance rule
-   of 10.7 unchanged), even though its presented spelling matches a live node.
-4. `splitItemDecomposition` and decomposition expansion: the scope root's children (and the
-   childless refusal) are judged on the canonically resolved node.
-5. Item ordering (`sortItemsPathBlocks`, `sortItemsByFileThenDocument`): a scope has a document
-   position only when it canonically resolves to a present node; a dangling scope takes the
-   absent branch (identity bytes, then item id) — SPEC 10.5's present-before-absent rule over
-   10.4 presence.
-
-Net effect on the finding's second observation: a resolution recorded on the deletion item before
-the rename stays resolved after the rename (recorded absent, still absent — no presence change, no
-hash change, no context change), and the recaptured node's own item is unaffected. T10.4-4's
-reintroduction arm must stay green (fresh chain ⇒ distinct item; old item keeps status under its
-mapped spelling).
-
-Verify: full suite green, typecheck, format; re-run the T42 manual reproduction plus the
-pre-rename-resolve variant (resolve the deletion item, then rename, then confirm `status`/`show`
-report it still resolved and nothing invalidated by the rename alone). Commit and push.
+Canonical presence, state, and invalidation (was T43, completed at the commit carrying this note):
+every spelling-lookup presence/state judgment on stored references is now canonical resolution —
+`resolveReference` in `src/core/review-state.ts` returns `{spelling, resolves}` (via
+`resolvesCurrently`), and a node is present iff it resolves AND the graph holds a node at the
+derived spelling. Sites: `recordedNodeState` + `scopeSubtreeReferences` (a dangling scope
+contributes its stored reference alone; hashes read only for a resolving, present node); the read
+payloads `nodeStateJson`/`originEntryJson` after-side (`src/cli/commands/review-session.ts` — a
+dangling recorded node presents absent, no sourceRange, absent-node text provenance of 10.7
+unchanged); `splitItemDecomposition`'s childless refusal and `expandDecompositions`' child
+enumeration; the current-side text snapshots (`currentNodeTexts` in `review-derive.ts` — a
+dangling reference never records the recapturing node's text); ordering per the bullet above
+(`compareByDocumentOrder` now takes a per-item `positionOf`). Verified: full suite 485/485 green,
+typecheck, format; the panel reproduction plus reads/`check` all exit 0 — the renamed node's item
+present under `specs/S.mdx#b` with its resolution reported, the deleted node's item absent under
+the same forward-mapped spelling with its own snapshot text — and the pre-rename-resolve variant
+(resolve the deletion item, then rename) stays `no-change` after the rename alone, nothing
+invalidated; a second mutating subcommand and re-read stay clean. Known latitude left in place
+(unreachable in any staged scenario): a decomposed scope that dangles after a recapture expands to
+zero children (judged canonically), but the replacement `parent-consistency` item the content
+source builds still canonicalizes its scope current-first through the decoded spelling.
 
 ## T44 — End-to-end verification: reproduction scenarios, full suite, CI
 

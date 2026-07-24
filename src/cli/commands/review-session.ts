@@ -78,7 +78,7 @@ import type { ReviewStateInputs } from "../../core/review-state.js";
 import {
   deriveEffectiveStatuses,
   presentRecordedState,
-  spellingOfReference,
+  resolveReference,
 } from "../../core/review-state.js";
 import type { ResolvedBaseline } from "../../workspace/baseline.js";
 import { resolveBaseline } from "../../workspace/baseline.js";
@@ -508,9 +508,12 @@ function absentNodeText(
  * One payload node (SPEC 10.7): identity, presence, the role's text, and —
  * for a present requirement node — its source range (1.7). The stored
  * canonical reference surfaces as its derived current spelling (SPEC 10.4:
- * every recorded node presented under its current identity) and resolves
- * against the graph through it. A code location (`selection === "code"`)
- * enters as identity and presence alone.
+ * every recorded node presented under its current identity), while
+ * presence is judged by canonical resolution (10.4): a dangling reference
+ * — its identity ceased to resolve through the journal — presents absent,
+ * with no source range and the absent-node text rule, even though its
+ * presented spelling matches the distinct node that recaptured it. A code
+ * location (`selection === "code"`) enters as identity and presence alone.
  */
 function nodeStateJson(
   view: SessionReadView,
@@ -518,17 +521,20 @@ function nodeStateJson(
   reference: string,
   selection: TextSelection,
 ): JsonObject {
-  const spelling = spellingOfReference(
+  const { spelling, resolves } = resolveReference(
     view.analysis.journal.journal,
     reference,
   );
   if (selection === "code") {
     return {
       node: spelling,
-      present: view.analysis.graph.codeLocation(spelling) !== undefined,
+      present:
+        resolves && view.analysis.graph.codeLocation(spelling) !== undefined,
     };
   }
-  const node = view.analysis.graph.requirementNode(spelling);
+  const node = resolves
+    ? view.analysis.graph.requirementNode(spelling)
+    : undefined;
   if (node !== undefined) {
     // SPEC 10.7: a present node's text is read from the current graph —
     // the expanded value of 1.6 — with its source range (1.7).
@@ -552,7 +558,10 @@ function nodeStateJson(
 /**
  * One origin entry (SPEC 10.7): a before/after pair of the node's own text
  * — before from the item's `baseline` state, after from the current graph;
- * the absent side of the pair is presented absent, with no text.
+ * the absent side of the pair is presented absent, with no text. The after
+ * side's presence is judged by canonical resolution (SPEC 10.4): a
+ * dangling reference presents absent even though its presented spelling
+ * matches the distinct node that recaptured it.
  */
 function originEntryJson(
   view: SessionReadView,
@@ -564,11 +573,13 @@ function originEntryJson(
     recordedBaseline !== undefined && recordedBaseline.present
       ? { present: true, text: item.baselineTexts[reference]?.ownText }
       : { present: false };
-  const spelling = spellingOfReference(
+  const { spelling, resolves } = resolveReference(
     view.analysis.journal.journal,
     reference,
   );
-  const node = view.analysis.graph.requirementNode(spelling);
+  const node = resolves
+    ? view.analysis.graph.requirementNode(spelling)
+    : undefined;
   const after: JsonObject =
     node === undefined
       ? { present: false }
