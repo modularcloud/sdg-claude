@@ -36,9 +36,10 @@
 // workspace later and happen to share a renamed prefix are never mapped.
 //
 // This module is pure (IMPLEMENTATION Architecture: canonical identities are
-// core): parsing, validation, serialization, and the canonical-identity walk
-// take bytes and entries as values. File I/O — reading `.xspec/journal`,
-// classifying its occupant, appending — lives in src/workspace/journal.ts.
+// core): parsing, validation, serialization, the canonical-identity walks,
+// and the canonical-identity key codec take bytes and entries as values.
+// File I/O — reading `.xspec/journal`, classifying its occupant, appending
+// — lives in src/workspace/journal.ts.
 
 import type { ByteRange } from "./bytes.js";
 import { compareBytes, sortByBytes } from "./bytes.js";
@@ -581,10 +582,21 @@ export class Journal {
    * a journaled operation thus starts a new chain: distinct nodes always
    * have distinct canonical identities, and no hash ever changes merely
    * because an identity changed.
+   *
+   * The optional `length` restricts the walk to the journal's first
+   * `length` entries — the canonical identity as of that journal prefix,
+   * byte-for-byte what a Journal over `entries.slice(0, length)` computes
+   * (the walk never looks past its starting entry, and positions count the
+   * same entries), without materializing a prefix Journal. Defaults to the
+   * whole journal; values beyond it clamp, exactly as `slice` does.
    */
-  canonicalIdentity(identity: string): CanonicalIdentity {
+  canonicalIdentity(
+    identity: string,
+    length: number = this.entries.length,
+  ): CanonicalIdentity {
     let tracked = identity;
-    for (let index = this.entries.length - 1; index >= 0; index -= 1) {
+    const start = journalBound(length, this.entries.length) - 1;
+    for (let index = start; index >= 0; index -= 1) {
       // Valid entries' source and target sets are disjoint (entryProblem),
       // so at most one branch applies; checking sources first keeps the
       // walk total and deterministic even over unvalidated entries.
@@ -604,17 +616,156 @@ export class Journal {
    * identity forward — chained mappings compose. Baseline replay constructs
    * a Journal over the entry suffix present now but absent at the baseline
    * ref and maps each baseline identity through it.
+   *
+   * The optional `from` skips the first `from` entries — the mapping the
+   * entry suffix `entries.slice(from)` applies (a canonical position's
+   * remaining journal, SPEC 10.4/6.3), byte-for-byte what a Journal over
+   * that slice computes, without materializing one. Defaults to the whole
+   * journal; values beyond it clamp to the empty suffix, as `slice` does.
    */
-  mapForward(identity: string): string {
+  mapForward(identity: string, from = 0): string {
     let current = identity;
-    for (const index of this.sourceIndex) {
-      const target = index.get(current);
+    const start = journalBound(from, this.sourceIndex.length);
+    for (let index = start; index < this.sourceIndex.length; index += 1) {
+      const target = this.sourceIndex[index].get(current);
       if (target !== undefined) {
         current = target;
       }
     }
     return current;
   }
+}
+
+/**
+ * Validate a journal prefix length or entry position argument: a
+ * non-negative integer, clamped to the journal's entry count (`slice`
+ * semantics — positions come from canonical identities, whose journals can
+ * only have grown since). Anything else is an internal error, never data.
+ */
+function journalBound(value: number, entryCount: number): number {
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(
+      `xspec internal error: invalid journal position ${String(value)}`,
+    );
+  }
+  return Math.min(value, entryCount);
+}
+
+// ---------------------------------------------------------------------------
+// Canonical-identity keys and journal-relative walks (SPEC 5.4, 6.3, 10.4)
+// ---------------------------------------------------------------------------
+//
+// SPEC 10.4: wherever review compares or matches recorded nodes, requirement
+// nodes compare as canonical identities (5.4), never as reference spellings
+// — distinct canonical identities may come to share one forward-mapped
+// spelling (a spelling vacated by a manual deletion and later recaptured by
+// a journaled rename), so canonical pairs are the only sound storage and
+// matching key. These helpers are that plumbing: canonicalize a spelling as
+// of the journal prefix under which it was observed, derive a canonical
+// identity's current spelling for presentation ("the recorded identity
+// mapped forward through the journal (6.3)"), decide whether it still
+// resolves ("its identity ceases to resolve through the journal"), and
+// encode/parse the injective string key form used for stored references.
+
+/**
+ * SPEC 5.4: the canonical identity of the node that bore `spelling` when
+ * the journal held its first `length` entries. Because positions agree with
+ * the full journal's and entries are append-only (SPEC 6.1), the result
+ * stays that node's canonical identity forever as the journal grows.
+ */
+export function canonicalAt(
+  journal: Journal,
+  length: number,
+  spelling: string,
+): CanonicalIdentity {
+  return journal.canonicalIdentity(spelling, length);
+}
+
+/**
+ * The identity currently borne by the node `canonical` denotes (SPEC 10.4:
+ * "the recorded identity mapped forward through the journal (6.3)") — the
+ * entries after the canonical position applied in file order. Total whether
+ * or not the node still resolves: after the spelling was recaptured for a
+ * different chain, the result names that chain's node — a distinction
+ * `resolvesCurrently` exists to draw.
+ */
+export function currentSpellingOf(
+  journal: Journal,
+  canonical: CanonicalIdentity,
+): string {
+  return journal.mapForward(canonical.identity, canonical.position);
+}
+
+/**
+ * SPEC 10.4: whether `canonical` still resolves through the journal — the
+ * round trip holds: canonicalizing its current spelling against the full
+ * journal ends on `canonical` again. The round trip fails exactly when a
+ * later entry recaptured the (possibly mapped) spelling for a different
+ * chain — the recapturing entry diverts the backward walk onto that other
+ * chain, and distinct nodes' walks never converge (5.4: distinct nodes
+ * always have distinct canonical identities). A false result marks the
+ * recorded node absent (10.4: "a node is absent when it is deleted or its
+ * identity ceases to resolve through the journal").
+ */
+export function resolvesCurrently(
+  journal: Journal,
+  canonical: CanonicalIdentity,
+): boolean {
+  const roundTrip = journal.canonicalIdentity(
+    currentSpellingOf(journal, canonical),
+  );
+  return (
+    roundTrip.identity === canonical.identity &&
+    roundTrip.position === canonical.position
+  );
+}
+
+/**
+ * A canonical identity's deterministic string key: `<position>:<identity>`
+ * with the position in canonical decimal (no sign, no leading zeros). The
+ * identity may contain any characters — `:` and `#` included — but a
+ * canonical decimal contains no `:`, so the first `:` always separates and
+ * the encoding is injective: byte equality of encodings is canonical
+ * equality (SPEC 5.4), the comparison SPEC 10.4 requires of review storage
+ * and matching, available to map keys and stored JSON object keys alike.
+ */
+export function encodeCanonicalIdentity(canonical: CanonicalIdentity): string {
+  if (!Number.isInteger(canonical.position) || canonical.position < 0) {
+    throw new Error(
+      `xspec internal error: invalid canonical position ` +
+        String(canonical.position),
+    );
+  }
+  return `${String(canonical.position)}:${canonical.identity}`;
+}
+
+/**
+ * Parse the exact key form `encodeCanonicalIdentity` produces, or null for
+ * anything else: one or more digits, then `:`, then the identity (any
+ * remainder, further `:`s included), with the digit run in canonical
+ * decimal — no leading zeros, no sign, nothing beyond `Number`'s safe
+ * integer range. Exactly the encoder's image round-trips
+ * (`encode(parse(text)) === text` wherever parse succeeds), so a stored
+ * key has one accepted spelling — the strictness session parsing needs
+ * (SPEC 10.1: a reference that does not parse violates the session's
+ * invariants).
+ */
+export function parseCanonicalIdentity(text: string): CanonicalIdentity | null {
+  const separator = text.indexOf(":");
+  if (separator === -1) {
+    return null;
+  }
+  const digits = text.slice(0, separator);
+  if (!/^[0-9]+$/.test(digits)) {
+    return null;
+  }
+  const position = Number(digits);
+  // Canonical decimal only: leading zeros ("07") and digit runs beyond the
+  // safe integer range do not round-trip through String, and are rejected.
+  if (String(position) !== digits) {
+    return null;
+  }
+  return { identity: text.slice(separator + 1), position };
 }
 
 // ---------------------------------------------------------------------------

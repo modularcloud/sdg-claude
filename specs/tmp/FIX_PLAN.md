@@ -99,31 +99,12 @@ are facts about what `test/` observes):
 
 ---
 
-## T41 — Canonical-identity plumbing for review (pure helpers; no behavior change)
-
-**Satisfies:** groundwork for SPEC 10.4's "requirement nodes compare as canonical identities (5.4)
-… never as reference spellings"; no observable behavior change in this task.
-
-In the pure core (extend `/home/user/sdg-claude/src/core/journal.ts` and/or a new small core
-module; keep I/O out per IMPLEMENTATION Architecture), add and unit-verify:
-
-1. `canonicalAt(journal, length, spelling) -> CanonicalIdentity` — canonicalize a spelling as of a
-   journal prefix: `new Journal(entries.slice(0, length)).canonicalIdentity(spelling)` (SPEC 5.4).
-   Precompute/share prefixes if built repeatedly; determinism over speed, but avoid rebuilding a
-   `Journal` per node on hot paths (reads canonicalize every recorded node).
-2. `currentSpellingOf(journal, canonical) -> string` — `entries.slice(position)` applied via
-   `mapForward` (SPEC 10.4/6.3 presentation rule).
-3. `resolvesCurrently(journal, canonical) -> boolean` — the round-trip check above (SPEC 10.4
-   "ceases to resolve through the journal").
-4. An injective, deterministic string encoding of `CanonicalIdentity` usable as map/object keys and
-   as the stored key form, plus its parser: recommended `<decimal position>:<identity>` with the
-   position in canonical decimal (no leading zeros) and the parser splitting at the first `:` after
-   the leading digits. Identities may contain `:` and `#`; the leading-digits rule keeps the
-   encoding unambiguous. Parser rejects anything not of that exact form (needed by T42's strict
-   session parsing).
-
-No call sites change in this task. Verify: `npm run typecheck`, `npm run build`, `npm test`,
-`npm run format:check` all green. Commit and push.
+Canonical-identity plumbing (was T41, completed): `src/core/journal.ts` now exports `canonicalAt`,
+`currentSpellingOf`, `resolvesCurrently`, and the injective key codec
+`encodeCanonicalIdentity`/`parseCanonicalIdentity` (`<canonical decimal position>:<identity>`,
+parser splitting at the first `:`, rejecting anything not of that exact form). `Journal.canonicalIdentity`
+and `Journal.mapForward` take optional prefix-length/start-position bounds, so no per-node prefix or
+suffix `Journal` is ever built on hot paths.
 
 ## T42 — Store and match recorded review nodes as canonical identities
 
@@ -138,7 +119,7 @@ Scope of change (product only):
 1. **Stored form** (`/home/user/sdg-claude/src/core/review.ts`): every stored node reference
    becomes a canonical identity — item `scope`, `context[]`, `origin[]`, the keys of
    `baseline.nodes`/`current.nodes` and of `baselineTexts`/`derivedTexts`, and each recorded
-   decomposition's `scope` — using T41's encoding (or an equivalent explicit
+   decomposition's `scope` — using the canonical key encoding above (or an equivalent explicit
    `{identity, position}` shape; the encoding is recommended because object keys stay strings and
    `checkKeys`-style strict parsing stays simple). Keep the top-level keys `creationParameters`,
    `items`, and per-item `id`, `status`, `blockedBy` exactly as today (frozen staging adapter,
@@ -253,5 +234,5 @@ stay-green constraint.
 
 ---
 
-Completion of T41–T44 closes the panel's Gap 1. No spec-problems entries are needed: SPEC 5.4,
+Completion of T42–T44 closes the panel's Gap 1. No spec-problems entries are needed: SPEC 5.4,
 10.1, 10.4, and 14.21 are consistent and implementable as specified; the product deviated.
