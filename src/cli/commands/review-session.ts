@@ -21,17 +21,21 @@
 // 4. Refresh-on-read (SPEC 13.3, cli/prepare.ts): validation findings
 //    report and exit 1, nothing answered, nothing modified.
 // 5. Re-run the session's strategy generators with the recorded creation
-//    parameters against the current workspace (SPEC 10.4, 10.7), replay the
-//    recorded decompositions (SPEC 10.5), and derive the read-time view:
-//    identities mapped forward through the journal (SPEC 10.4, 6.3),
-//    effective statuses (read-time invalidation — a stale resolution is
-//    reported `invalidated`, never persisted), blocked states over those
-//    statuses (SPEC 10.3), and the presentation item order (10.5–10.7).
+//    parameters against the current workspace (SPEC 10.4, 10.7),
+//    canonicalized at the derivation seam (core/review-derive.ts
+//    `canonicalizeGeneration` — stored references and generated nodes
+//    compare canonically, SPEC 5.4), replay the recorded decompositions
+//    (SPEC 10.5), and derive the read-time view: effective statuses
+//    (read-time invalidation — a stale resolution is reported
+//    `invalidated`, never persisted), blocked states over those statuses
+//    (SPEC 10.3), and the presentation item order (10.5–10.7) over derived
+//    current spellings.
 //
 // The payload renderers below fix the self-contained text payload of
 // SPEC 10.7 once, so `show`, `export`, and `next --json` can never disagree:
-// every scope, context, and origin node under its current identity and
-// presence, source ranges for present requirement nodes, the recorded
+// every scope, context, and origin node under its current identity — the
+// stored canonical reference's derived current spelling (SPEC 10.4, 6.3) —
+// and presence, source ranges for present requirement nodes, the recorded
 // `baseline`/`current` states, and text per item kind — a present node's
 // text from the current graph, an absent node's from the most recent
 // recorded state containing it (the derivation-time snapshots, else the
@@ -47,6 +51,7 @@ import { generatePathBlocksItems } from "../../core/path-blocks.js";
 import type {
   ItemKind,
   ItemStatus,
+  RecordedState,
   ReviewItem,
   ReviewSession,
   SessionParameters,
@@ -62,6 +67,7 @@ import type {
   GeneratedItem,
 } from "../../core/review-derive.js";
 import {
+  canonicalizeGeneration,
   currentContextSets,
   expandDecompositions,
   sortItemsByFileThenDocument,
@@ -71,8 +77,8 @@ import type { BaselineDerivationSide } from "../../core/review-derive.js";
 import type { ReviewStateInputs } from "../../core/review-state.js";
 import {
   deriveEffectiveStatuses,
-  journalSuffixMapper,
-  mapSessionIdentitiesForward,
+  presentRecordedState,
+  spellingOfReference,
 } from "../../core/review-state.js";
 import type { ResolvedBaseline } from "../../workspace/baseline.js";
 import { resolveBaseline } from "../../workspace/baseline.js";
@@ -88,15 +94,21 @@ import { rangeJson, usageError } from "./common.js";
 // Generator runs with recorded parameters (SPEC 10.4, 10.7)
 // ---------------------------------------------------------------------------
 
-/** One strategy-generator run, normalized across the three strategies. */
+/** One strategy-generator run, normalized across the three strategies and
+ * canonicalized at the derivation seam (core/review-derive.ts
+ * `canonicalizeGeneration`): every generated node and blocker reference is
+ * a stored canonical reference (SPEC 5.4, 10.4). */
 export interface SessionGenerationRun {
-  /** The generated items, before decomposition replay (SPEC 10.5). */
+  /** The canonicalized generated items, before decomposition replay
+   * (SPEC 10.5). */
   readonly items: readonly GeneratedItem[];
-  /** The strategy's decomposition content (SPEC 10.7). */
+  /** The strategy's decomposition content (SPEC 10.7), in
+   * canonical-reference space. */
   readonly contentSource: DecompositionContentSource;
   /**
-   * SPEC 10.4/9.2: per code-location identity, the impact-edge target
-   * identities — `path-blocks` only; the other strategies scope no code.
+   * SPEC 10.4/9.2: per canonical code-location reference, the canonical
+   * impact-edge target references — `path-blocks` only; the other
+   * strategies scope no code.
    */
   readonly impactTargets?: ReadonlyMap<string, readonly string[]>;
   /**
@@ -111,14 +123,16 @@ export interface SessionGenerationRun {
  * Run the session's strategy generators with the recorded creation
  * parameters against the current workspace (SPEC 10.4, 10.7: the recorded
  * commit as the baseline, the recorded globs matched against the currently
- * discovered sources, nothing for `audit`). For `path-blocks` the caller
- * has already resolved the recorded baseline (`resolveRecordedBaseline`).
+ * discovered sources, nothing for `audit`), then canonicalize the run at
+ * the derivation seam. For `path-blocks` the caller has already resolved
+ * the recorded baseline (`resolveRecordedBaseline`).
  */
 export function runSessionGenerators(
   parameters: SessionParameters,
   analysis: WorkspaceAnalysis,
   baseline: ResolvedBaseline | undefined,
 ): SessionGenerationRun {
+  const journal = analysis.journal.journal;
   switch (parameters.strategy) {
     case "path-blocks": {
       if (baseline === undefined) {
@@ -136,18 +150,32 @@ export function runSessionGenerators(
         {
           graph: analysis.graph,
           hashes: analysis.hashes,
-          journal: analysis.journal.journal,
+          journal,
         },
       );
+      // SPEC 6.3: the baseline journal is a prefix of the current one, so
+      // its entry count is the baseline journal prefix length the
+      // canonicalization anchors deleted baseline nodes at.
+      const baselineJournalLength =
+        baseline.analysis.journal.journal.entries.length;
+      const canonical = canonicalizeGeneration(
+        {
+          items: generation.items,
+          contentSource: generation.contentSource,
+          impactTargets: generation.impactTargets,
+        },
+        { journal, graph: analysis.graph, baselineJournalLength },
+      );
       return {
-        items: generation.items,
-        contentSource: generation.contentSource,
-        impactTargets: generation.impactTargets,
+        items: canonical.items,
+        contentSource: canonical.contentSource,
+        impactTargets: canonical.impactTargets,
         baseline: {
           graph: baseline.analysis.graph,
           hashes: baseline.analysis.hashes,
           textModel: baseline.analysis.textModel,
-          replay: generation.replay,
+          journal,
+          journalLength: baselineJournalLength,
         },
       };
     }
@@ -155,9 +183,13 @@ export function runSessionGenerators(
       // SPEC 10.7: an audit session records no creation parameters — its
       // generators run against the current workspace as it stands.
       const generation = generateAuditItems(analysis.graph);
+      const canonical = canonicalizeGeneration(
+        { items: generation.items, contentSource: generation.contentSource },
+        { journal, graph: analysis.graph },
+      );
       return {
-        items: generation.items,
-        contentSource: generation.contentSource,
+        items: canonical.items,
+        contentSource: canonical.contentSource,
       };
     }
     case "coverage": {
@@ -165,9 +197,13 @@ export function runSessionGenerators(
         analysis.graph,
         parameters.profile,
       );
+      const canonical = canonicalizeGeneration(
+        { items: generation.items, contentSource: generation.contentSource },
+        { journal, graph: analysis.graph },
+      );
       return {
-        items: generation.items,
-        contentSource: generation.contentSource,
+        items: canonical.items,
+        contentSource: canonical.contentSource,
       };
     }
   }
@@ -185,6 +221,7 @@ export function generationStateInputs(
   return {
     graph: analysis.graph,
     hashes: analysis.hashes,
+    journal: analysis.journal.journal,
     impactTargets: (location): readonly string[] =>
       impactTargets === undefined ? [] : (impactTargets.get(location) ?? []),
   };
@@ -194,10 +231,11 @@ export function generationStateInputs(
 // The read-time view (SPEC 10.4)
 // ---------------------------------------------------------------------------
 
-/** A session's read-time view: forward-mapped, invalidation applied. */
+/** A session's read-time view: canonical references, invalidation applied. */
 export interface SessionReadView {
   readonly name: string;
-  /** Forward-mapped to current identities (SPEC 10.4, 6.3). */
+  /** As stored — canonical references (SPEC 5.4, 10.4: comparisons are
+   * byte-wise over them; presentation derives current spellings). */
   readonly session: ReviewSession;
   /** The decomposition-expanded generator run (SPEC 10.5, 10.7). */
   readonly expanded: readonly GeneratedItem[];
@@ -214,7 +252,9 @@ export interface SessionReadView {
 /**
  * Derive a session's read-time view (module header step 5). Nothing is
  * persisted: read-time invalidation is computed and reported, never written
- * (SPEC 10.4).
+ * (SPEC 10.4). The stored session is consumed as-is — stored references
+ * are canonical identities (SPEC 5.4), eternal under journal growth, so no
+ * read-time identity rewrite exists.
  */
 export function buildSessionReadView(
   name: string,
@@ -223,18 +263,13 @@ export function buildSessionReadView(
   analysis: WorkspaceAnalysis,
 ): SessionReadView {
   const journal = analysis.journal.journal;
-  // SPEC 10.4/6.3: map every recorded identity forward through the journal
-  // entries appended since the session was last written.
-  const session = mapSessionIdentitiesForward(
-    stored,
-    journalSuffixMapper(journal, stored.journalLength),
-    journal.entries.length,
-  );
+  const session = stored;
   // SPEC 10.5/10.7: the recorded decompositions replay over the generation.
   const expanded = expandDecompositions(
     generation.items,
     session.decompositions.map((decomposition) => decomposition.scope),
     analysis.graph,
+    journal,
     generation.contentSource,
   );
   const stateInputs = generationStateInputs(analysis, generation);
@@ -252,11 +287,12 @@ export function buildSessionReadView(
       isItemBlocked(item, (id) => statuses.get(id) ?? "unresolved"),
     );
   }
-  // SPEC 10.5 (path-blocks total order), 10.6 (audit), 10.7 (coverage).
+  // SPEC 10.5 (path-blocks total order), 10.6 (audit), 10.7 (coverage) —
+  // ranked over the scope references' derived current spellings (10.4).
   const ordered =
     sessionStrategy(session) === "path-blocks"
-      ? sortItemsPathBlocks(session.items, analysis.graph)
-      : sortItemsByFileThenDocument(session.items, analysis.graph);
+      ? sortItemsPathBlocks(session.items, analysis.graph, journal)
+      : sortItemsByFileThenDocument(session.items, analysis.graph, journal);
   return {
     name,
     session,
@@ -452,14 +488,16 @@ function contextTextSelection(kind: ItemKind): TextSelection {
  * under which mutating subcommands derived the item — the derivation-time
  * snapshots are rewritten per node at each derivation that finds it present,
  * so they are the most recent wherever they exist; a node contained in none
- * has no text.
+ * has no text. The tables are keyed by canonical reference (10.4), so the
+ * lookup is exact whatever the node's spelling became.
  */
 function absentNodeText(
   item: ReviewItem,
-  identity: string,
+  reference: string,
   selection: TextSelection,
 ): string | undefined {
-  const recorded = item.derivedTexts[identity] ?? item.baselineTexts[identity];
+  const recorded =
+    item.derivedTexts[reference] ?? item.baselineTexts[reference];
   if (recorded === undefined || selection === "code") {
     return undefined;
   }
@@ -468,27 +506,34 @@ function absentNodeText(
 
 /**
  * One payload node (SPEC 10.7): identity, presence, the role's text, and —
- * for a present requirement node — its source range (1.7). A code location
- * (`selection === "code"`) enters as identity and presence alone.
+ * for a present requirement node — its source range (1.7). The stored
+ * canonical reference surfaces as its derived current spelling (SPEC 10.4:
+ * every recorded node presented under its current identity) and resolves
+ * against the graph through it. A code location (`selection === "code"`)
+ * enters as identity and presence alone.
  */
 function nodeStateJson(
   view: SessionReadView,
   item: ReviewItem,
-  identity: string,
+  reference: string,
   selection: TextSelection,
 ): JsonObject {
+  const spelling = spellingOfReference(
+    view.analysis.journal.journal,
+    reference,
+  );
   if (selection === "code") {
     return {
-      node: identity,
-      present: view.analysis.graph.codeLocation(identity) !== undefined,
+      node: spelling,
+      present: view.analysis.graph.codeLocation(spelling) !== undefined,
     };
   }
-  const node = view.analysis.graph.requirementNode(identity);
+  const node = view.analysis.graph.requirementNode(spelling);
   if (node !== undefined) {
     // SPEC 10.7: a present node's text is read from the current graph —
     // the expanded value of 1.6 — with its source range (1.7).
     return {
-      node: identity,
+      node: spelling,
       present: true,
       sourceRange: rangeJson(node.section.range),
       text:
@@ -498,9 +543,9 @@ function nodeStateJson(
     };
   }
   return {
-    node: identity,
+    node: spelling,
     present: false,
-    text: absentNodeText(item, identity, selection),
+    text: absentNodeText(item, reference, selection),
   };
 }
 
@@ -512,14 +557,18 @@ function nodeStateJson(
 function originEntryJson(
   view: SessionReadView,
   item: ReviewItem,
-  identity: string,
+  reference: string,
 ): JsonObject {
-  const recordedBaseline = item.baseline.nodes[identity];
+  const recordedBaseline = item.baseline.nodes[reference];
   const before: JsonObject =
     recordedBaseline !== undefined && recordedBaseline.present
-      ? { present: true, text: item.baselineTexts[identity]?.ownText }
+      ? { present: true, text: item.baselineTexts[reference]?.ownText }
       : { present: false };
-  const node = view.analysis.graph.requirementNode(identity);
+  const spelling = spellingOfReference(
+    view.analysis.journal.journal,
+    reference,
+  );
+  const node = view.analysis.graph.requirementNode(spelling);
   const after: JsonObject =
     node === undefined
       ? { present: false }
@@ -527,7 +576,7 @@ function originEntryJson(
           present: true,
           text: view.analysis.textModel.ownText(node.document, node.section),
         };
-  return { node: identity, before, after };
+  return { node: spelling, before, after };
 }
 
 /**
@@ -535,12 +584,14 @@ function originEntryJson(
  * state, and the self-contained text payload) — `show`'s whole document,
  * one element of `export`'s item list, and `next --json`'s `item` member.
  * Status is the effective one (SPEC 10.4: a stale resolution is never
- * reported as resolved); `baseline` and `current` report as recorded.
+ * reported as resolved); `baseline` and `current` report as recorded, each
+ * node presented under its current identity (`presentRecordedState`).
  */
 export function itemDocument(
   view: SessionReadView,
   item: ReviewItem,
 ): JsonObject {
+  const journal = view.analysis.journal.journal;
   const scopeSelection = scopeTextSelection(item.kind);
   return {
     id: item.id,
@@ -551,14 +602,14 @@ export function itemDocument(
     reason: item.reason,
     note: item.note,
     scope: nodeStateJson(view, item, item.scope, scopeSelection),
-    context: item.context.map((identity) =>
-      nodeStateJson(view, item, identity, contextTextSelection(item.kind)),
+    context: item.context.map((reference) =>
+      nodeStateJson(view, item, reference, contextTextSelection(item.kind)),
     ),
-    origin: item.origin.map((identity) =>
-      originEntryJson(view, item, identity),
+    origin: item.origin.map((reference) =>
+      originEntryJson(view, item, reference),
     ),
-    baseline: recordedStateToJson(item.baseline),
-    current: recordedStateToJson(item.current),
+    baseline: recordedStateToJson(presentRecordedState(journal, item.baseline)),
+    current: recordedStateToJson(presentRecordedState(journal, item.current)),
   };
 }
 
@@ -592,8 +643,9 @@ export function renderItemHuman(
   for (const entry of origins) {
     out += renderOriginHuman(entry);
   }
-  out += `  baseline: ${compactStateHuman(item)}\n`;
-  out += `  current: ${compactStateHuman(item, "current")}\n`;
+  const journal = view.analysis.journal.journal;
+  out += `  baseline: ${compactStateHuman(presentRecordedState(journal, item.baseline))}\n`;
+  out += `  current: ${compactStateHuman(presentRecordedState(journal, item.current))}\n`;
   return out;
 }
 
@@ -641,13 +693,9 @@ function renderTextBlock(text: string, indent = "    "): string {
   return out;
 }
 
-/** A recorded state as one compact human line (the same information the
- * JSON member carries; SPEC 12.0). */
-function compactStateHuman(
-  item: ReviewItem,
-  which: "baseline" | "current" = "baseline",
-): string {
-  const state = which === "baseline" ? item.baseline : item.current;
+/** A presented recorded state (`presentRecordedState`) as one compact
+ * human line (the same information the JSON member carries; SPEC 12.0). */
+function compactStateHuman(state: RecordedState): string {
   const parts: string[] = [];
   for (const [identity, node] of Object.entries(state.nodes)) {
     if (!node.present) {

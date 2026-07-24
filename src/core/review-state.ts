@@ -56,19 +56,24 @@
 // invalidate by remaining absent — the absent marker compares equal — so
 // deletion review stays resolvable (SPEC 10.4, 10.2).
 //
-// Identity policy (src/core/review.ts header; SPEC 10.4, 6.3): sessions
-// store node identities mapped forward to their current canonical spellings
-// at write time, with the journal's entry count (`journalLength`) recording
-// the moment. Reads map every recorded identity forward through the
-// journal-entry suffix appended since (`journalSuffixMapper`,
-// `mapSessionIdentitiesForward`) before comparing or presenting anything,
-// so requirement nodes compare as canonical identities (SPEC 5.4) and code
-// locations as identities, never as reference spellings: a journaled rename
-// or move maps every recorded node to the identity its node now bears —
-// hashes byte-identical wherever the operation was pure (SPEC 6.2) — so it
-// duplicates no item, discards no status, and by itself invalidates
-// nothing, while a vacated identity reintroduced by a distinct node maps
-// away from that node's spelling and never collides with it.
+// Identity policy (src/core/review.ts header; SPEC 10.4, 5.4): sessions
+// store every node reference as a canonical identity in the injective key
+// encoding of src/core/journal.ts (`<position>:<identity>`). A canonical
+// identity never changes as the journal grows, so byte equality of stored
+// references is canonical comparison — requirement nodes compare as
+// canonical identities and never as reference spellings: a journaled
+// rename or move changes no stored reference and no hash wherever the
+// operation was pure (SPEC 6.2), so it duplicates no item, discards no
+// status, and by itself invalidates nothing, while a spelling vacated by a
+// manual deletion (SPEC 6.6) and later recaptured by a journaled rename
+// denotes two distinct canonical identities that never collide. The state
+// computation here keys its result canonically — descendants and impact
+// targets enumerated from the current graph are canonicalized against the
+// full current journal — and derives a reference's current spelling
+// (`currentSpellingOf`, SPEC 6.3) only to look nodes, hashes, and texts up
+// in the graph state. This module owns the reference codec seam
+// (`canonicalKeyOfCurrent`, `spellingOfReference`, `referenceOf`) the
+// derivation and presentation layers share.
 //
 // Everything here is pure: item validity is recomputed against the current
 // graph on every read (`status`, `next`, `show`, `export`) and never
@@ -80,16 +85,19 @@
 
 import type { RequirementNode, WorkspaceGraph } from "./graph.js";
 import type { NodeHashes } from "./hashes.js";
-import { Journal } from "./journal.js";
+import type { CanonicalIdentity, Journal } from "./journal.js";
+import {
+  currentSpellingOf,
+  encodeCanonicalIdentity,
+  parseCanonicalIdentity,
+} from "./journal.js";
 import type {
   ItemKind,
   ItemStatus,
   RecordedHashName,
   RecordedNodeState,
   RecordedState,
-  RecordedTextTable,
   ReviewItem,
-  ReviewSession,
 } from "./review.js";
 import { isResolvedStatus, RECORDED_HASH_NAMES } from "./review.js";
 
@@ -106,22 +114,26 @@ export interface ReviewStateInputs {
   readonly graph: WorkspaceGraph;
   readonly hashes: ReadonlyMap<string, NodeHashes>;
   /**
-   * SPEC 10.4/9.2: per code-location identity, the identities of the nodes
-   * targeted by the location's impact edges — the union of its `references`
-   * and `embeds` edges in the recorded-baseline graph and in this graph,
-   * identities mapped through the journal into this graph's identity space.
-   * Consulted only for `code-impact` items; callers of sessions that can
-   * hold none (`audit`, `coverage`) may omit it.
+   * The full current journal (module header identity policy): stored
+   * canonical references decode to their current spellings for graph and
+   * hash lookups, and graph-enumerated nodes canonicalize into reference
+   * keys.
+   */
+  readonly journal: Journal;
+  /**
+   * SPEC 10.4/9.2: per code-location reference, the canonical references of
+   * the nodes targeted by the location's impact edges — the union of its
+   * `references` and `embeds` edges in the recorded-baseline graph and in
+   * this graph. Consulted only for `code-impact` items; callers of sessions
+   * that can hold none (`audit`, `coverage`) may omit it.
    */
   readonly impactTargets?: (location: string) => readonly string[];
 }
 
 /**
  * The item fields the state computation reads (SPEC 10.4): the kind and the
- * scope, context, and origin nodes. `ReviewItem` satisfies this shape.
- * Every identity must be a spelling of the target graph's identity space —
- * for the current graph, a stored identity mapped forward first
- * (`mapItemIdentitiesForward`).
+ * scope, context, and origin nodes, each a stored canonical reference
+ * (module header). `ReviewItem` satisfies this shape.
  */
 export interface ItemStateSpec {
   readonly kind: ItemKind;
@@ -170,8 +182,8 @@ export function computeRecordedState(
     case "subtree-coherence": {
       // SPEC 10.4: subtreeHash and metadataHash of each scope node — the
       // root and all current descendants (10.5), derived from the graph.
-      for (const identity of scopeSubtreeIdentities(inputs.graph, item.scope)) {
-        record(identity, "subtreeHash", "metadataHash");
+      for (const reference of scopeSubtreeReferences(inputs, item.scope)) {
+        record(reference, "subtreeHash", "metadataHash");
       }
       break;
     }
@@ -221,64 +233,73 @@ export function computeRecordedState(
 }
 
 /**
- * The scope-node identities of a `subtree-coherence` item (SPEC 10.5: the
- * root and all descendants), in document order: derived from the graph the
- * state is computed against; an absent root has no descendants there and
- * contributes itself alone (module header).
+ * The scope-node references of a `subtree-coherence` item (SPEC 10.5: the
+ * root and all descendants), in document order: the stored scope reference
+ * resolved to a current spelling, the subtree derived from the graph the
+ * state is computed against, and each member canonicalized against the full
+ * journal (module header). A root whose spelling resolves to no node has no
+ * descendants there and contributes its stored reference alone. Deriving
+ * the set identically at record and at check keeps the two computations
+ * structurally aligned (module header).
  */
-function scopeSubtreeIdentities(
-  graph: WorkspaceGraph,
+function scopeSubtreeReferences(
+  inputs: ReviewStateInputs,
   scope: string,
 ): string[] {
-  const root = graph.requirementNode(scope);
+  const root = inputs.graph.requirementNode(
+    spellingOfReference(inputs.journal, scope),
+  );
   if (root === undefined) {
     return [scope];
   }
-  const identities: string[] = [];
+  const references: string[] = [];
   const stack: RequirementNode[] = [root];
   while (stack.length > 0) {
     const node = stack.pop();
     if (node === undefined) {
       break;
     }
-    identities.push(node.identity);
-    const children = graph.childrenOf(node);
+    references.push(canonicalKeyOfCurrent(inputs.journal, node.identity));
+    const children = inputs.graph.childrenOf(node);
     for (let index = children.length - 1; index >= 0; index -= 1) {
       stack.push(children[index]);
     }
   }
-  return identities;
+  return references;
 }
 
 /** One node's recorded state (SPEC 10.4): presence, and the required hash
- * values for a present node — the absent marker otherwise. */
+ * values for a present node — the absent marker otherwise. The node's
+ * canonical reference decodes to its current spelling for the graph and
+ * hash lookups. */
 function recordedNodeState(
   item: ItemStateSpec,
-  identity: string,
+  reference: string,
   names: ReadonlySet<RecordedHashName>,
   inputs: ReviewStateInputs,
 ): RecordedNodeState {
+  const spelling = spellingOfReference(inputs.journal, reference);
   // SPEC 10.2/10.5: only a `code-impact` item's scope is a code location;
   // every other recorded node is a requirement node. A code location has no
   // hash values (SPEC 5.5 hashes requirement nodes), so its state is
   // presence alone.
-  if (item.kind === "code-impact" && identity === item.scope) {
-    return inputs.graph.codeLocation(identity) !== undefined
+  if (item.kind === "code-impact" && reference === item.scope) {
+    return inputs.graph.codeLocation(spelling) !== undefined
       ? { present: true, hashes: {} }
       : { present: false, hashes: "absent" };
   }
-  if (inputs.graph.requirementNode(identity) === undefined) {
+  if (inputs.graph.requirementNode(spelling) === undefined) {
     // SPEC 10.4: absent — deleted, or its identity ceased to resolve; the
     // hashes are the explicit absent marker.
     return { present: false, hashes: "absent" };
   }
   const hashes: Partial<Record<RecordedHashName, string>> = {};
   if (names.size > 0) {
-    const nodeHashes = inputs.hashes.get(identity);
+    const nodeHashes = inputs.hashes.get(spelling);
     if (nodeHashes === undefined) {
       // Callers pass validated, fully hashed workspaces (SPEC 12.1, 13.3).
       throw new Error(
-        `xspec internal error: no hashes for the recorded node ${identity}`,
+        `xspec internal error: no hashes for the recorded node ${spelling}`,
       );
     }
     for (const name of RECORDED_HASH_NAMES) {
@@ -341,11 +362,11 @@ function recordedNodeStatesEqual(
 }
 
 /**
- * SPEC 10.4: whether two context sets agree, as sets of node identities —
+ * SPEC 10.4: whether two context sets agree, as sets of node references —
  * the recorded context set (the item's `context` field, 10.2) against the
- * generator-derived current one. Both sides must be current-identity
- * spellings (module header), so string equality is canonical-identity
- * equality (SPEC 5.4).
+ * generator-derived current one. Both sides are canonical references
+ * (module header), so string equality is canonical-identity equality
+ * (SPEC 5.4).
  */
 export function identitySetsEqual(
   a: readonly string[],
@@ -365,101 +386,79 @@ export function identitySetsEqual(
 }
 
 // ---------------------------------------------------------------------------
-// Forward mapping (SPEC 10.4, 6.3 — the read-time identity seam)
+// Canonical references (SPEC 5.4, 10.4 — the stored-identity codec seam)
 // ---------------------------------------------------------------------------
 
-/** An identity mapping — `Journal.mapForward` or a composition of it. */
-export type IdentityMapper = (identity: string) => string;
-
 /**
- * The mapper from a session's stored identity space to the current one
- * (SPEC 10.4, 6.3): the journal entries appended since the session was last
- * written (`journalLength` counts them, src/core/review.ts) applied in file
- * order, chained mappings composing. With no entries appended the mapper is
- * the identity. A `journalLength` beyond the journal's length maps nothing
- * — such a session was written under journal content the current journal no
- * longer extends, which the journal's own validation reports (SPEC 6.1,
- * 14.13); the mapping stays total and deterministic regardless.
+ * The stored canonical reference of a node identified by a current-graph
+ * spelling: its canonical identity against the full journal (SPEC 5.4),
+ * encoded as the injective reference key (src/core/journal.ts).
  */
-export function journalSuffixMapper(
+export function canonicalKeyOfCurrent(
   journal: Journal,
-  journalLength: number,
-): IdentityMapper {
-  const suffix = new Journal(journal.entries.slice(journalLength));
-  return (identity) => suffix.mapForward(identity);
+  spelling: string,
+): string {
+  return encodeCanonicalIdentity(journal.canonicalIdentity(spelling));
 }
 
-/** A recorded state with every node key mapped (SPEC 10.4: reads present
- * every recorded node under its current identity). */
-export function mapRecordedState(
+/**
+ * Decode a stored canonical reference. Session parsing validates every
+ * stored reference (src/core/review.ts), and every internally built key
+ * comes from the encoder, so a reference that does not parse here is an
+ * internal error, never data.
+ */
+export function parseReference(reference: string): CanonicalIdentity {
+  const canonical = parseCanonicalIdentity(reference);
+  if (canonical === null) {
+    throw new Error(
+      `xspec internal error: ${JSON.stringify(reference)} is not a ` +
+        `canonical identity reference`,
+    );
+  }
+  return canonical;
+}
+
+/**
+ * SPEC 10.4/6.3: a stored reference's current spelling — "the recorded
+ * identity mapped forward through the journal (6.3)" — for presentation
+ * and graph lookups. Total whether or not the node still resolves; after a
+ * recapture the spelling is the recapturing chain's, a distinction the
+ * canonical keys keep and the spellings deliberately do not.
+ */
+export function spellingOfReference(
+  journal: Journal,
+  reference: string,
+): string {
+  return currentSpellingOf(journal, parseReference(reference));
+}
+
+/**
+ * A recorded state as presented (SPEC 10.2: reads report both fields as
+ * recorded; 10.4: every recorded node presented under its current
+ * identity): each node keyed by its derived current spelling. Where two
+ * canonically distinct recorded nodes of the state share a forward-mapped
+ * spelling — reachable only when a spelling vacated by a manual deletion
+ * was recaptured by a journaled rename — spelling keys would collide and
+ * drop a recorded node, so the whole state keeps its stored canonical keys
+ * instead: deterministic, injective, and every recorded node presented.
+ */
+export function presentRecordedState(
+  journal: Journal,
   state: RecordedState,
-  map: IdentityMapper,
 ): RecordedState {
+  const references = Object.keys(state.nodes);
+  const spellings = new Map<string, string>();
+  for (const reference of references) {
+    spellings.set(reference, spellingOfReference(journal, reference));
+  }
+  if (new Set(spellings.values()).size !== references.length) {
+    return state;
+  }
   const nodes: Record<string, RecordedNodeState> = {};
-  for (const [identity, node] of Object.entries(state.nodes)) {
-    nodes[map(identity)] = node;
+  for (const [reference, node] of Object.entries(state.nodes)) {
+    nodes[spellings.get(reference) as string] = node;
   }
   return { nodes };
-}
-
-/** A text table with every node key mapped (SPEC 10.4, 10.7). */
-export function mapTextTable(
-  table: RecordedTextTable,
-  map: IdentityMapper,
-): RecordedTextTable {
-  const mapped: Record<string, RecordedTextTable[string]> = {};
-  for (const [identity, texts] of Object.entries(table)) {
-    mapped[map(identity)] = texts;
-  }
-  return mapped;
-}
-
-/**
- * SPEC 10.4: one item with every recorded node identity mapped forward —
- * scope, context, origin, both recorded states, and both text tables;
- * `blockedBy` names item IDs, not nodes, and is untouched. Whether or not a
- * node is still present, it is presented (and compared) under the identity
- * the mapping yields.
- */
-export function mapItemIdentitiesForward(
-  item: ReviewItem,
-  map: IdentityMapper,
-): ReviewItem {
-  return {
-    ...item,
-    scope: map(item.scope),
-    context: item.context.map((identity) => map(identity)),
-    origin: item.origin.map((identity) => map(identity)),
-    baseline: mapRecordedState(item.baseline, map),
-    current: mapRecordedState(item.current, map),
-    baselineTexts: mapTextTable(item.baselineTexts, map),
-    derivedTexts: mapTextTable(item.derivedTexts, map),
-  };
-}
-
-/**
- * SPEC 10.4/6.3: a session value with every recorded node identity — each
- * item's and each recorded decomposition's — mapped forward, and
- * `journalLength` advanced to the journal position the mapping reached.
- * Reads run this once after loading (with `journalSuffixMapper` over the
- * current journal) so every comparison and presentation works in current
- * identities; mutating subcommands persist the mapped session, which is how
- * stored identities stay current spellings (src/core/review.ts header).
- */
-export function mapSessionIdentitiesForward(
-  session: ReviewSession,
-  map: IdentityMapper,
-  journalLength: number,
-): ReviewSession {
-  return {
-    ...session,
-    journalLength,
-    decompositions: session.decompositions.map((decomposition) => ({
-      ...decomposition,
-      scope: map(decomposition.scope),
-    })),
-    items: session.items.map((item) => mapItemIdentitiesForward(item, map)),
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -475,9 +474,9 @@ export interface ItemValidityInputs {
    * session's strategy generators assign to each item when re-run with the
    * session's recorded creation parameters (10.7) and recorded
    * decompositions (10.5, 10.7) against the current workspace, computed
-   * without persisting anything, as current-identity spellings. An item the
-   * generators no longer produce MUST be absent from the map: it retains
-   * its recorded context set and cannot invalidate through it.
+   * without persisting anything, as canonical references (module header).
+   * An item the generators no longer produce MUST be absent from the map:
+   * it retains its recorded context set and cannot invalidate through it.
    */
   readonly currentContexts: ReadonlyMap<string, readonly string[]>;
 }
@@ -485,12 +484,13 @@ export interface ItemValidityInputs {
 /**
  * SPEC 10.4: the status a read reports for one item. A resolved item
  * (SPEC 10.3) is reported `invalidated` when its recorded `current` state
- * differs from the same state computed against the current graph, or when
- * its context set changed (`ItemValidityInputs`); an item needing review
- * (`unresolved`, `invalidated`) reports its stored status unchanged. The
- * item must already be mapped forward (`mapSessionIdentitiesForward`) —
- * this function never rewrites anything: a stale resolution is reported
- * `invalidated`, never persisted.
+ * differs from the same state computed against the current graph — both
+ * keyed canonically (module header), so the comparison is the canonical
+ * one SPEC 10.4 requires — or when its context set changed
+ * (`ItemValidityInputs`). An item needing review (`unresolved`,
+ * `invalidated`) reports its stored status unchanged. This function never
+ * rewrites anything: a stale resolution is reported `invalidated`, never
+ * persisted.
  */
 export function effectiveItemStatus(
   item: ReviewItem,
@@ -514,12 +514,12 @@ export function effectiveItemStatus(
 }
 
 /**
- * SPEC 10.4: read-time validity of every item of a (forward-mapped)
- * session, by item ID. Every read (`status`, `next`, `show`, `export`)
- * derives statuses through this — a stale resolution is never reported as
- * resolved — and feeds them to the blocking rule (SPEC 10.3,
- * `isItemBlocked`): because `invalidated` is not a resolved status, a
- * blocker that becomes invalidated re-blocks its dependents.
+ * SPEC 10.4: read-time validity of every item of a session, by item ID.
+ * Every read (`status`, `next`, `show`, `export`) derives statuses through
+ * this — a stale resolution is never reported as resolved — and feeds them
+ * to the blocking rule (SPEC 10.3, `isItemBlocked`): because `invalidated`
+ * is not a resolved status, a blocker that becomes invalidated re-blocks
+ * its dependents.
  */
 export function deriveEffectiveStatuses(
   items: readonly ReviewItem[],

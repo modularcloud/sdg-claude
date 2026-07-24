@@ -51,6 +51,7 @@ import {
   deriveSessionItems,
   expandDecompositions,
 } from "../../core/review-derive.js";
+import { spellingOfReference } from "../../core/review-state.js";
 import type { ResolvedBaseline } from "../../workspace/baseline.js";
 import { resolveBaseline } from "../../workspace/baseline.js";
 import { withMutationExclusivity } from "../../workspace/lock.js";
@@ -195,6 +196,7 @@ async function runCreate(
     generation.items,
     [],
     analysis.graph,
+    analysis.journal.journal,
     generation.contentSource,
   );
   const derived = deriveSessionItems({
@@ -205,6 +207,7 @@ async function runCreate(
       graph: analysis.graph,
       hashes: analysis.hashes,
       textModel: analysis.textModel,
+      journal: analysis.journal.journal,
       impactTargets: generation.impactTargets,
     },
     baseline: generation.baseline,
@@ -212,8 +215,9 @@ async function runCreate(
   const session: ReviewSession = {
     parameters,
     decompositions: [],
-    // Stored identities are current spellings (core/review.ts identity
-    // policy): record the journal position they are current at.
+    // Stored references are canonical identities (core/review.ts identity
+    // policy): record the journal's entry count as the write-moment bound
+    // every stored canonical position stays within.
     journalLength: analysis.journal.journal.entries.length,
     nextItemId: derived.nextItemId,
     items: derived.items,
@@ -342,6 +346,11 @@ export async function reviewStatusCommand(
   }
   const view = opened.view;
   const totals = effectiveTotals(view);
+  // SPEC 10.4: every recorded node surfaces under its current identity —
+  // the stored canonical reference's derived current spelling.
+  const journal = view.analysis.journal.journal;
+  const scopeSpelling = (reference: string): string =>
+    spellingOfReference(journal, reference);
 
   if (invocation.json) {
     // SPEC 10.7: items in item order — id, kind, scope, status, blocked
@@ -350,7 +359,7 @@ export async function reviewStatusCommand(
       items: view.ordered.map((item): JsonObject => ({
         id: item.id,
         kind: item.kind,
-        scope: item.scope,
+        scope: scopeSpelling(item.scope),
         status: view.statuses.get(item.id) ?? item.status,
         blocked: view.blocked.get(item.id) ?? false,
       })),
@@ -362,7 +371,7 @@ export async function reviewStatusCommand(
   for (const item of view.ordered) {
     const status = view.statuses.get(item.id) ?? item.status;
     const blocked = view.blocked.get(item.id) ?? false;
-    out += `${item.id} ${item.kind} ${item.scope} ${status} blocked=${String(blocked)}\n`;
+    out += `${item.id} ${item.kind} ${scopeSpelling(item.scope)} ${status} blocked=${String(blocked)}\n`;
   }
   out += `totals: ${renderCountsHuman(totals)}\n`;
   context.stdout.write(out);
@@ -493,7 +502,12 @@ export async function reviewExportCommand(
     decompositions: view.session.decompositions.map(
       (decomposition): JsonObject => ({
         kind: decomposition.kind,
-        scope: decomposition.scope,
+        // SPEC 10.4: recorded nodes surface under their current identities
+        // — the stored canonical reference's derived current spelling.
+        scope: spellingOfReference(
+          view.analysis.journal.journal,
+          decomposition.scope,
+        ),
       }),
     ),
     items: view.ordered.map((item) => itemDocument(view, item)),

@@ -15,13 +15,16 @@
 //
 //   {
 //     "creationParameters": {"base": <commit>} | {} | {"profile": {…}},
-//     "decompositions": [{"kind": "subtree-coherence", "scope": <id>}, …],
+//     "decompositions": [{"kind": "subtree-coherence", "scope": <ref>}, …],
 //     "items": [<item>, …],
 //     "journalLength": <n>,
 //     "nextItemId": <n>,
 //     "strategy": "path-blocks" | "audit" | "coverage",
 //     "version": 1
 //   }
+//
+// where every node reference <ref> is a canonical identity key (identity
+// policy below).
 //
 // and each item carries exactly the fields of SPEC 10.2 — `id`, `kind`,
 // `scope`, `context`, `reason`, `origin`, `baseline`, `current`, `status`,
@@ -32,16 +35,29 @@
 // among the item's `baseline` state and the states under which mutating
 // subcommands derived the item).
 //
-// Identity policy: every mutating subcommand stores node identities mapped
-// forward to their current canonical spellings (SPEC 5.4) and records the
-// journal's entry count at that moment (`journalLength`). Reads map every
-// recorded identity forward through the journal-entry suffix appended since
-// (SPEC 10.4, 6.3: chained mappings compose), so recorded nodes are always
-// presented under their current identities and journaled renames or moves
-// duplicate no item, discard no status, and by themselves invalidate
-// nothing. Under this policy two items with the same kind and canonical
-// scope always store byte-identical scope spellings, so the at-most-one
-// invariant (10.1, 10.5) is checked byte-wise here.
+// Identity policy: every stored node reference — an item's `scope`, its
+// `context` and `origin` entries, the node keys of `baseline`/`current` and
+// of `baselineTexts`/`derivedTexts`, and each recorded decomposition's
+// `scope` — is a canonical identity (SPEC 5.4) in the injective key
+// encoding of src/core/journal.ts (`<position>:<identity>`,
+// `encodeCanonicalIdentity`). A node's canonical identity never changes as
+// the journal grows (SPEC 6.1: append-only), so byte equality of stored
+// references IS the canonical comparison SPEC 10.4 requires wherever review
+// compares or matches recorded nodes — item matching, decomposition
+// matching, and the at-most-one invariant (10.1, 10.5) are checked
+// byte-wise here, journal-free. Two canonically distinct nodes may come to
+// share one forward-mapped spelling (a spelling vacated by a manual
+// deletion, SPEC 6.6, and later recaptured by a journaled rename), which is
+// exactly why spellings are never the stored or matching key. Reads derive
+// each reference's current spelling — the recorded identity mapped forward
+// through the journal (SPEC 10.4, 6.3) — for presentation and graph
+// lookups only (src/core/review-state.ts).
+//
+// `journalLength` records the journal's entry count when the session was
+// last written — the write-moment bound: every stored reference's canonical
+// position is <= it (positions come from walks over that journal or a
+// prefix of it), and parsing enforces the bound as a session invariant. It
+// plays no identity-mapping role.
 //
 // This module is pure (IMPLEMENTATION Architecture): the model, name rules,
 // status semantics, parsing, validation, and serialization take bytes and
@@ -51,6 +67,7 @@
 import { compareBytes } from "./bytes.js";
 import { canonicalJson } from "./canonical-json.js";
 import type { JsonObject, JsonValue } from "./canonical-json.js";
+import { parseCanonicalIdentity } from "./journal.js";
 import type {
   Configuration,
   ConfiguredGroup,
@@ -393,8 +410,9 @@ export interface ReviewSession {
   readonly decompositions: readonly RecordedDecomposition[];
   /**
    * The journal's entry count when the session was last written (module
-   * header identity policy): reads map every recorded identity forward
-   * through the entries appended since (SPEC 10.4, 6.3).
+   * header identity policy): the write-moment bound every stored canonical
+   * position stays within. Mutating subcommands advance it to the current
+   * entry count on every write.
    */
   readonly journalLength: number;
   /**
@@ -1271,10 +1289,73 @@ function requireCount(
 }
 
 /**
+ * SPEC 10.1: every stored node reference parses as the canonical identity
+ * key encoding of the module header — a reference that does not is a
+ * session-invariant violation (the product only ever writes canonical
+ * references) — and its canonical position stays within the session's
+ * write-moment bound (`journalLength`) when that bound itself parsed.
+ */
+function checkCanonicalReferences(
+  items: readonly ReviewItem[],
+  decompositions: readonly RecordedDecomposition[],
+  journalLength: number | null,
+  problems: Problems,
+): void {
+  const check = (reference: string, where: string): void => {
+    const canonical = parseCanonicalIdentity(reference);
+    if (canonical === null || canonical.identity.length === 0) {
+      problems.add(
+        `${where} must be a canonical identity reference of the form ` +
+          `"<position>:<identity>" (SPEC 5.4, 10.4), found ` +
+          JSON.stringify(reference),
+      );
+      return;
+    }
+    if (journalLength !== null && canonical.position > journalLength) {
+      problems.add(
+        `${where} records the canonical position ` +
+          `${String(canonical.position)}, beyond the session's journalLength ` +
+          `${String(journalLength)} — a stored position never exceeds the ` +
+          `journal's entry count at the write that stored it (SPEC 5.4, 10.1)`,
+      );
+    }
+  };
+  items.forEach((item, index) => {
+    const where = `items[${String(index)}]`;
+    check(item.scope, `${where}.scope`);
+    item.context.forEach((reference, at) => {
+      check(reference, `${where}.context[${String(at)}]`);
+    });
+    item.origin.forEach((reference, at) => {
+      check(reference, `${where}.origin[${String(at)}]`);
+    });
+    for (const [which, state] of [
+      ["baseline", item.baseline],
+      ["current", item.current],
+    ] as const) {
+      for (const reference of Object.keys(state.nodes)) {
+        check(reference, `a ${where}.${which}.nodes key`);
+      }
+    }
+    for (const [which, table] of [
+      ["baselineTexts", item.baselineTexts],
+      ["derivedTexts", item.derivedTexts],
+    ] as const) {
+      for (const reference of Object.keys(table)) {
+        check(reference, `a ${where}.${which} key`);
+      }
+    }
+  });
+  decompositions.forEach((decomposition, index) => {
+    check(decomposition.scope, `decompositions[${String(index)}].scope`);
+  });
+}
+
+/**
  * SPEC 10.1: item `id`s unique within the session; `blockedBy` naming only
  * item `id`s present in the session and containing no cycle; at most one
- * item per kind and scope node (byte-wise under the identity policy of the
- * module header).
+ * item per kind and scope node — byte-wise over the stored canonical
+ * references, which is canonical comparison (SPEC 10.4, module header).
  */
 function checkSessionInvariants(
   items: readonly ReviewItem[],
@@ -1489,6 +1570,7 @@ export function validateSessionDocument(document: unknown): SessionParseResult {
     // malformed item has already made the session corrupt above.
     checkSessionInvariants(items, problems);
   }
+  checkCanonicalReferences(items, decompositions, journalLength, problems);
 
   if (!problems.empty || parameters === null) {
     return { ok: false, problems: problems.list };

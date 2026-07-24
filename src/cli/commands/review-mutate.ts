@@ -40,10 +40,6 @@ import {
   resolveSessionItem,
   splitItemDecomposition,
 } from "../../core/review-derive.js";
-import {
-  journalSuffixMapper,
-  mapSessionIdentitiesForward,
-} from "../../core/review-state.js";
 import { withMutationExclusivity } from "../../workspace/lock.js";
 import type { WorkspaceAnalysis } from "../../workspace/pipeline.js";
 import { writeSession } from "../../workspace/reviews.js";
@@ -90,6 +86,7 @@ function currentSideOf(
     graph: analysis.graph,
     hashes: analysis.hashes,
     textModel: analysis.textModel,
+    journal: analysis.journal.journal,
     impactTargets:
       generation.impactTargets ?? new Map<string, readonly string[]>(),
   };
@@ -132,15 +129,10 @@ async function runSplit(
   if (!loaded.ok) {
     return loaded.exit;
   }
-  // The mutating subcommands persist current spellings (core/review.ts
-  // identity policy): map every recorded identity forward through the
-  // journal entries appended since the session was last written.
+  // The stored session's references are canonical identities (core/review.ts
+  // identity policy) — consumed as-is; no read-time identity rewrite exists.
   const journal = loaded.analysis.journal.journal;
-  const session = mapSessionIdentitiesForward(
-    loaded.session,
-    journalSuffixMapper(journal, loaded.session.journalLength),
-    journal.entries.length,
-  );
+  const session = loaded.session;
   const original = session.items.find((item) => item.id === itemId);
   if (original === undefined) {
     return unknownItemError(invocation, context, name, itemId);
@@ -169,12 +161,13 @@ async function runSplit(
       split.refusal,
     );
   }
-  const failed = await writeSessionChecked(
-    invocation,
-    context,
-    name,
-    split.session,
-  );
+  // The write re-records the journal's entry count as the session's
+  // write-moment bound (core/review.ts identity policy: every stored
+  // canonical position stays <= journalLength).
+  const failed = await writeSessionChecked(invocation, context, name, {
+    ...split.session,
+    journalLength: journal.entries.length,
+  });
   if (failed !== null) {
     return failed;
   }
@@ -277,7 +270,12 @@ async function runResolve(
     current: currentSideOf(loaded.analysis, generation),
     baseline: generation.baseline,
   });
-  const failed = await writeSessionChecked(invocation, context, name, session);
+  // The write re-records the journal's entry count as the session's
+  // write-moment bound (core/review.ts identity policy).
+  const failed = await writeSessionChecked(invocation, context, name, {
+    ...session,
+    journalLength: loaded.analysis.journal.journal.entries.length,
+  });
   if (failed !== null) {
     return failed;
   }

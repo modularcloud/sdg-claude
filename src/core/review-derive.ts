@@ -36,19 +36,29 @@
 //   ("wherever an item order ranks by document order — here, in 10.6, and
 //   in 10.7", SPEC 10.5).
 //
-// Identity policy (src/core/review.ts header): every `GeneratedNode`
-// carries its stored identity — the node's current canonical spelling
-// (SPEC 5.4), a deleted node's baseline identity mapped forward through
-// the replay journal (SPEC 6.3) — plus its identity in the baseline graph
-// (null when absent there). Matching between generated items and stored
-// session items is byte-wise over (kind, stored scope identity), which is
-// canonical-identity matching because both sides store current spellings
-// (SPEC 10.4).
+// Identity policy (src/core/review.ts header): the strategy generators
+// work in spelling space — a `GeneratedNode.identity` as produced is the
+// node's current-graph spelling (a deleted node's baseline identity mapped
+// forward through the replay journal, SPEC 6.3) plus its identity in the
+// baseline graph (null when absent there). `canonicalizeGeneration` is the
+// central seam that rewrites one generator run into canonical-reference
+// space (SPEC 5.4): a node identified by a current-graph spelling
+// canonicalizes against the full current journal, while a node that exists
+// only in the recorded baseline canonicalizes as of the baseline journal
+// prefix from its baseline identity — never by canonicalizing its
+// forward-mapped spelling against the full journal, which would
+// misattribute a spelling recaptured by a replay entry. Everything
+// downstream of the seam — matching, decomposition replay, `split`, state
+// and text keys — is byte-wise over (kind, canonical scope reference),
+// which IS the canonical comparison SPEC 10.4 requires; spellings are
+// derived (`spellingOfReference`) only for graph lookups, item ordering,
+// and generator content.
 
 import { compareBytes } from "./bytes.js";
 import type { RequirementNode, WorkspaceGraph } from "./graph.js";
 import type { NodeHashes } from "./hashes.js";
 import type { Journal } from "./journal.js";
+import { canonicalAt, encodeCanonicalIdentity } from "./journal.js";
 import type {
   ItemKind,
   RecordedHashName,
@@ -62,7 +72,11 @@ import type {
 } from "./review.js";
 import { allocateItemId, kindScopesCodeLocation } from "./review.js";
 import type { ReviewStateInputs } from "./review-state.js";
-import { computeRecordedState } from "./review-state.js";
+import {
+  canonicalKeyOfCurrent,
+  computeRecordedState,
+  spellingOfReference,
+} from "./review-state.js";
 import type { WorkspaceTextModel } from "./text-model.js";
 
 // ---------------------------------------------------------------------------
@@ -70,13 +84,14 @@ import type { WorkspaceTextModel } from "./text-model.js";
 // ---------------------------------------------------------------------------
 
 /**
- * One node of a generated item, with the identities the derivation needs:
- * `identity` is the stored (current-space) spelling (module header), and
- * `baselineIdentity` the node's identity in the recorded-baseline graph —
- * null when the node is absent there (added since the baseline, or a
- * session without a baseline). Presence in the current graph is resolved
- * against the graph by `identity`, exactly as read-time invalidation
- * resolves it (SPEC 10.4, review-state.ts).
+ * One node of a generated item, with the identities the derivation needs.
+ * As a generator produces it, `identity` is the node's current-space
+ * spelling (module header); after `canonicalizeGeneration` — which every
+ * derivation consumer runs behind — it is the node's stored canonical
+ * reference (SPEC 5.4). `baselineIdentity` is the node's identity in the
+ * recorded-baseline graph — null when the node is absent there (added
+ * since the baseline, or a session without a baseline) — and is never
+ * rewritten: baseline-graph lookups resolve through it.
  */
 export interface GeneratedNode {
   readonly identity: string;
@@ -181,6 +196,213 @@ export interface DecompositionContentSource {
 }
 
 // ---------------------------------------------------------------------------
+// The canonicalization seam (SPEC 5.4, 10.4 — spelling space → references)
+// ---------------------------------------------------------------------------
+
+/** The inputs of `canonicalizeGeneration`. */
+export interface GenerationCanonicalization {
+  /** The full current journal. */
+  readonly journal: Journal;
+  /** The current workspace graph. */
+  readonly graph: WorkspaceGraph;
+  /**
+   * The baseline journal prefix length (SPEC 6.3: the baseline journal is
+   * a prefix of the current one — its entry count) for a baseline session;
+   * omitted for `audit`/`coverage`, whose generated nodes never carry a
+   * baseline identity.
+   */
+  readonly baselineJournalLength?: number;
+}
+
+/** One generator run rewritten into canonical-reference space. */
+export interface CanonicalizedGeneration {
+  readonly items: readonly GeneratedItem[];
+  readonly contentSource: DecompositionContentSource;
+  /** Per canonical code-location reference, the canonical references of
+   * its impact-edge targets (SPEC 10.4, 9.2). */
+  readonly impactTargets?: ReadonlyMap<string, readonly string[]>;
+}
+
+/**
+ * The canonical reference of one generated node (module header): a node
+ * identified by a current-graph spelling canonicalizes against the full
+ * current journal (SPEC 5.4: the canonical identity of the node currently
+ * bearing the spelling), while a node that exists only in the recorded
+ * baseline — baseline identity recorded, absent from the current graph —
+ * canonicalizes as of the baseline journal prefix from its baseline
+ * identity. Never by canonicalizing its forward-mapped spelling against
+ * the full journal: a replay entry that recaptured the spelling for a
+ * different chain would misattribute the node.
+ */
+function canonicalNodeKey(
+  node: GeneratedNode,
+  isCodeLocation: boolean,
+  inputs: GenerationCanonicalization,
+): string {
+  const { journal, graph, baselineJournalLength } = inputs;
+  if (baselineJournalLength !== undefined && node.baselineIdentity !== null) {
+    const present = isCodeLocation
+      ? graph.codeLocation(node.identity) !== undefined
+      : graph.requirementNode(node.identity) !== undefined;
+    if (!present) {
+      return encodeCanonicalIdentity(
+        canonicalAt(journal, baselineJournalLength, node.baselineIdentity),
+      );
+    }
+  }
+  return canonicalKeyOfCurrent(journal, node.identity);
+}
+
+/**
+ * Rewrite one generator run into canonical-reference space (module
+ * header): every `GeneratedNode.identity` and every blocker reference's
+ * scope becomes a canonical reference, the decomposition content source is
+ * wrapped to accept and produce references, and the per-location
+ * impact-target map is rekeyed canonically. The generators themselves stay
+ * spelling-space and journal-free; this seam is the one place generated
+ * nodes canonicalize.
+ */
+export function canonicalizeGeneration(
+  run: {
+    readonly items: readonly GeneratedItem[];
+    readonly contentSource: DecompositionContentSource;
+    readonly impactTargets?: ReadonlyMap<string, readonly string[]>;
+  },
+  inputs: GenerationCanonicalization,
+): CanonicalizedGeneration {
+  const { journal } = inputs;
+
+  // Blocker references carry only (kind, scope spelling), so a reference
+  // to an item whose scope canonicalizes through its baseline identity (a
+  // deleted node) must resolve through the items: collect the scopes whose
+  // canonical reference diverges from the spelling's own full-journal
+  // canonicalization. Where a current-graph item bears the same (kind,
+  // spelling) — reachable only when a vacated spelling was recaptured —
+  // the current item wins, matching the generators' own current-first
+  // resolution of stored spellings.
+  const divergent = new Map<string, string>();
+  const hasCurrent = new Set<string>();
+  for (const item of run.items) {
+    const key = kindScopeKey(item.kind, item.scope.identity);
+    const canonical = canonicalNodeKey(
+      item.scope,
+      kindScopesCodeLocation(item.kind),
+      inputs,
+    );
+    if (canonical === canonicalKeyOfCurrent(journal, item.scope.identity)) {
+      hasCurrent.add(key);
+    } else if (!divergent.has(key)) {
+      divergent.set(key, canonical);
+    }
+  }
+  const mainRefKey = (ref: GeneratedBlockerRef): string => {
+    const key = kindScopeKey(ref.kind, ref.scope);
+    if (!hasCurrent.has(key)) {
+      const anchored = divergent.get(key);
+      if (anchored !== undefined) {
+        return anchored;
+      }
+    }
+    return canonicalKeyOfCurrent(journal, ref.scope);
+  };
+  // Decomposition-content references — the split parent's blockers and an
+  // audit-style item's child blockers — always name current-graph child
+  // nodes (SPEC 10.5, 10.7: decomposition is per *current* child subtree),
+  // so they canonicalize as current spellings, never through the main
+  // generation's divergent scopes.
+  const contentRefKey = (ref: GeneratedBlockerRef): string =>
+    canonicalKeyOfCurrent(journal, ref.scope);
+
+  const canonicalNode = (
+    node: GeneratedNode,
+    isCodeLocation: boolean,
+  ): GeneratedNode => ({
+    identity: canonicalNodeKey(node, isCodeLocation, inputs),
+    baselineIdentity: node.baselineIdentity,
+  });
+  const canonicalizeItem = (
+    item: GeneratedItem,
+    refKey: (ref: GeneratedBlockerRef) => string,
+  ): GeneratedItem => ({
+    ...item,
+    scope: canonicalNode(item.scope, kindScopesCodeLocation(item.kind)),
+    context: item.context.map((node) => canonicalNode(node, false)),
+    origin: item.origin.map((node) => canonicalNode(node, false)),
+    blockedBy: item.blockedBy.map((ref) => ({
+      kind: ref.kind,
+      scope: refKey(ref),
+    })),
+    inheritedBlockedBy: item.inheritedBlockedBy?.map((ref) => ({
+      kind: ref.kind,
+      scope: refKey(ref),
+    })),
+    impactTargets: item.impactTargets?.map((node) =>
+      canonicalNode(node, false),
+    ),
+  });
+
+  const items = run.items.map((item) => canonicalizeItem(item, mainRefKey));
+
+  // The decomposition content source in reference space: inputs decode to
+  // the spellings the strategy's builder works in, outputs canonicalize.
+  const inner = run.contentSource;
+  const decode = (reference: string): string =>
+    spellingOfReference(journal, reference);
+  const contentSource: DecompositionContentSource = {
+    subtreeCoherenceItem: (scopeReference): GeneratedItem =>
+      canonicalizeItem(
+        inner.subtreeCoherenceItem(decode(scopeReference)),
+        contentRefKey,
+      ),
+    splitParentConsistencyItem: (
+      scopeReference,
+      childReferences,
+    ): GeneratedItem =>
+      canonicalizeItem(
+        inner.splitParentConsistencyItem(
+          decode(scopeReference),
+          childReferences.map(decode),
+        ),
+        contentRefKey,
+      ),
+  };
+
+  // The per-location impact-target map (SPEC 10.4, 9.2), rekeyed
+  // canonically. A location with a generated `code-impact` item reuses the
+  // item's canonicalized targets — the deleted-target-aware keying above.
+  // Every other covered location is unimpacted, so its targets are present
+  // on both sides (SPEC 9.2: an added or deleted target makes the location
+  // impacted) and canonicalize as current spellings.
+  let impactTargets: Map<string, readonly string[]> | undefined;
+  if (run.impactTargets !== undefined) {
+    const itemBySpelling = new Map<string, GeneratedItem>();
+    run.items.forEach((item, index) => {
+      if (item.kind === "code-impact") {
+        itemBySpelling.set(item.scope.identity, items[index]);
+      }
+    });
+    const rekeyed = new Map<string, readonly string[]>();
+    for (const [location, targets] of run.impactTargets) {
+      const item = itemBySpelling.get(location);
+      if (item !== undefined) {
+        rekeyed.set(
+          item.scope.identity,
+          (item.impactTargets ?? []).map((node) => node.identity),
+        );
+      } else {
+        rekeyed.set(
+          canonicalKeyOfCurrent(journal, location),
+          targets.map((target) => canonicalKeyOfCurrent(journal, target)),
+        );
+      }
+    }
+    impactTargets = rekeyed;
+  }
+
+  return { items, contentSource, impactTargets };
+}
+
+// ---------------------------------------------------------------------------
 // Decomposition replay (SPEC 10.5 re-derivation rule 2, SPEC 10.7)
 // ---------------------------------------------------------------------------
 
@@ -202,14 +424,18 @@ function kindScopeKey(kind: ItemKind, scope: string): string {
  * here so the expansion output is the one-item-per-kind-and-scope set the
  * merge consumes; SPEC 10.1).
  *
- * `decomposedScopes` holds the recorded decompositions' scope identities
+ * `decomposedScopes` holds the recorded decompositions' scope references
  * (all recorded decompositions are `subtree-coherence`, SPEC 10.7), as
- * stored (current-space) spellings.
+ * stored canonical references; `generated` and `source` are
+ * canonical-space (`canonicalizeGeneration`). A decomposed scope resolves
+ * to a current graph node for child enumeration through its derived
+ * spelling (`journal`).
  */
 export function expandDecompositions(
   generated: readonly GeneratedItem[],
   decomposedScopes: readonly string[],
   graph: WorkspaceGraph,
+  journal: Journal,
   source: DecompositionContentSource,
 ): GeneratedItem[] {
   const decomposed = new Set(decomposedScopes);
@@ -238,12 +464,20 @@ export function expandDecompositions(
     try {
       // SPEC 10.5: one subtree-coherence item per *current* child subtree
       // of the scope node — an absent scope node has no current children.
-      const scopeNode = graph.requirementNode(scopeIdentity);
+      // The stored canonical scope resolves to a graph node through its
+      // derived spelling; the children, current-graph nodes, canonicalize
+      // against the full journal (module header).
+      const scopeNode = graph.requirementNode(
+        spellingOfReference(journal, scopeIdentity),
+      );
       const children: RequirementNode[] =
         scopeNode === undefined ? [] : graph.childrenOf(scopeNode);
+      const childReferences = children.map((child) =>
+        canonicalKeyOfCurrent(journal, child.identity),
+      );
       const items: GeneratedItem[] = [];
-      for (const child of children) {
-        const childItem = source.subtreeCoherenceItem(child.identity);
+      for (const childReference of childReferences) {
+        const childItem = source.subtreeCoherenceItem(childReference);
         if (isDecomposed(childItem.kind, childItem.scope.identity)) {
           // SPEC 10.5: the decomposition applies recursively.
           items.push(...expandScope(childItem.scope.identity));
@@ -252,10 +486,7 @@ export function expandDecompositions(
         }
       }
       items.push(
-        source.splitParentConsistencyItem(
-          scopeIdentity,
-          children.map((child) => child.identity),
-        ),
+        source.splitParentConsistencyItem(scopeIdentity, childReferences),
       );
       expansionMemo.set(scopeIdentity, items);
       return items;
@@ -355,31 +586,38 @@ function mergeRefs(
 // ---------------------------------------------------------------------------
 
 /** The current workspace's graph state (SPEC 10.4): graph, hashes, text
- * model, and — for sessions that can hold `code-impact` items — the
- * per-location impact-edge target identities (stored spellings). */
+ * model, the full current journal (the reference codec seam), and — for
+ * sessions that can hold `code-impact` items — the per-location
+ * impact-edge target references (canonical, `canonicalizeGeneration`). */
 export interface CurrentDerivationSide {
   readonly graph: WorkspaceGraph;
   readonly hashes: ReadonlyMap<string, NodeHashes>;
   readonly textModel: WorkspaceTextModel;
-  /** SPEC 10.4/9.2: per code-location identity, the impact-edge target
-   * identities; omitted for strategies that scope no code (SPEC 10.6,
-   * 10.7 coverage sessions). */
+  /** The full current journal (module header identity policy). */
+  readonly journal: Journal;
+  /** SPEC 10.4/9.2: per canonical code-location reference, the canonical
+   * impact-edge target references; omitted for strategies that scope no
+   * code (SPEC 10.6, 10.7 coverage sessions). */
   readonly impactTargets?: ReadonlyMap<string, readonly string[]>;
 }
 
 /**
  * The recorded-baseline graph state (SPEC 10.2: in a baseline session, an
  * item's `baseline` field holds the values in the graph at the recorded
- * baseline). `replay` maps a baseline identity to its stored (current)
- * spelling (SPEC 6.3). Sessions without a baseline (`audit`, `coverage`)
- * pass none: their `baseline` is the current graph's values at the moment
- * the item enters the session (SPEC 10.2).
+ * baseline). `journal` is the full current journal and `journalLength` the
+ * baseline journal prefix length (SPEC 6.3: the baseline journal is a
+ * prefix of the current one), so a baseline-graph node's stored key is its
+ * canonical identity as of that prefix — eternal under journal growth
+ * (SPEC 5.4). Sessions without a baseline (`audit`, `coverage`) pass none:
+ * their `baseline` is the current graph's values at the moment the item
+ * enters the session (SPEC 10.2).
  */
 export interface BaselineDerivationSide {
   readonly graph: WorkspaceGraph;
   readonly hashes: ReadonlyMap<string, NodeHashes>;
   readonly textModel: WorkspaceTextModel;
-  readonly replay: Journal;
+  readonly journal: Journal;
+  readonly journalLength: number;
 }
 
 /** `ReviewStateInputs` (review-state.ts) over a current side. */
@@ -390,6 +628,7 @@ export function reviewStateInputs(
   return {
     graph: current.graph,
     hashes: current.hashes,
+    journal: current.journal,
     impactTargets:
       impactTargets === undefined
         ? undefined
@@ -407,10 +646,12 @@ export function reviewStateInputs(
  * session with (SPEC 10.2). The per-kind relevant-hash table mirrors
  * review-state.ts's `computeRecordedState`; nodes resolve through their
  * `GeneratedNode.baselineIdentity` (module header), never by looking a
- * stored spelling up in the baseline graph, so a reintroduced identity
+ * stored reference up in the baseline graph, so a reintroduced identity
  * (SPEC 5.4) cannot alias a distinct baseline node. Keys are stored
- * identities: a baseline-side subtree member's key is its identity mapped
- * forward through the replay journal (SPEC 6.3).
+ * canonical references: a baseline-side subtree member's key is its
+ * canonical identity as of the baseline journal prefix (SPEC 5.4 — never
+ * its forward-mapped spelling canonicalized against the full journal,
+ * module header).
  */
 export function computeBaselineRecordedState(
   item: GeneratedItem,
@@ -468,7 +709,13 @@ export function computeBaselineRecordedState(
         const node = stack.pop();
         if (node === undefined) break;
         record(
-          baseline.replay.mapForward(node.identity),
+          encodeCanonicalIdentity(
+            canonicalAt(
+              baseline.journal,
+              baseline.journalLength,
+              node.identity,
+            ),
+          ),
           node.identity,
           "subtreeHash",
           "metadataHash",
@@ -611,7 +858,11 @@ function baselineTextTable(
   for (const node of textBearingNodes(item)) {
     const texts =
       baseline === undefined
-        ? nodeTexts(current.graph, current.textModel, node.identity)
+        ? nodeTexts(
+            current.graph,
+            current.textModel,
+            spellingOfReference(current.journal, node.identity),
+          )
         : node.baselineIdentity === null
           ? null
           : nodeTexts(
@@ -637,7 +888,11 @@ function derivedTextTable(
 ): RecordedTextTable {
   const table: Record<string, RecordedTexts> = { ...previous };
   for (const node of textBearingNodes(item)) {
-    const texts = nodeTexts(current.graph, current.textModel, node.identity);
+    const texts = nodeTexts(
+      current.graph,
+      current.textModel,
+      spellingOfReference(current.journal, node.identity),
+    );
     if (texts !== null) {
       table[node.identity] = texts;
     }
@@ -703,14 +958,14 @@ function newItemFromGenerated(
 /** The inputs of `deriveSessionItems`. */
 export interface DeriveSessionItemsArgs {
   /**
-   * The session's existing items, mapped forward to current spellings
-   * (review-state.ts `mapSessionIdentitiesForward`); empty at `create`.
+   * The session's existing items, as stored — canonical references
+   * (src/core/review.ts identity policy); empty at `create`.
    */
   readonly existing: readonly ReviewItem[];
   /** The session's item-id counter (src/core/review.ts). */
   readonly nextItemId: number;
-  /** The expanded generation (`expandDecompositions`) — one item per kind
-   * and scope node. */
+  /** The expanded canonical-space generation (`canonicalizeGeneration` →
+   * `expandDecompositions`) — one item per kind and scope node. */
   readonly generated: readonly GeneratedItem[];
   readonly current: CurrentDerivationSide;
   /** The recorded-baseline side; omitted for `audit`/`coverage` sessions
@@ -865,15 +1120,15 @@ export function deriveSessionItems(
 /** The inputs of `splitItemDecomposition`. */
 export interface SplitDecompositionArgs {
   /**
-   * The session, mapped forward to current spellings (review-state.ts
-   * `mapSessionIdentitiesForward`) — the mutating subcommands persist
-   * current spellings (src/core/review.ts identity policy).
+   * The session, as stored — canonical references (src/core/review.ts
+   * identity policy).
    */
   readonly session: ReviewSession;
   /** The item to decompose — an item of `session.items` (caller-resolved;
    * an unknown item id is the caller's usage error, SPEC 10.7, 12.0). */
   readonly original: ReviewItem;
-  /** The session strategy's decomposition content (SPEC 10.7). */
+  /** The session strategy's decomposition content (SPEC 10.7), in
+   * canonical-reference space (`canonicalizeGeneration`). */
   readonly contentSource: DecompositionContentSource;
   readonly current: CurrentDerivationSide;
   /** The recorded-baseline side; omitted for `audit`/`coverage` sessions
@@ -933,15 +1188,19 @@ export function splitItemDecomposition(
   }
   // SPEC 10.7: a childless scope root is refused. The decomposition is per
   // *current* child subtree (SPEC 10.5), so an absent scope root — with no
-  // current children — is childless here.
-  const scopeNode = current.graph.requirementNode(original.scope);
+  // current children — is childless here. The stored canonical scope
+  // resolves to a graph node through its derived spelling, which is also
+  // how the refusal names it (SPEC 10.4: nodes surface under current
+  // identities).
+  const scopeSpelling = spellingOfReference(current.journal, original.scope);
+  const scopeNode = current.graph.requirementNode(scopeSpelling);
   const children =
     scopeNode === undefined ? [] : current.graph.childrenOf(scopeNode);
   if (children.length === 0) {
     return {
       ok: false,
       refusal:
-        `the scope root ${original.scope} of item '${original.id}' has no ` +
+        `the scope root ${scopeSpelling} of item '${original.id}' has no ` +
         `children in the current graph — \`split\` on a subtree-coherence ` +
         `item whose scope root has no children is refused (SPEC 10.7)`,
     };
@@ -959,6 +1218,7 @@ export function splitItemDecomposition(
     [contentSource.subtreeCoherenceItem(original.scope)],
     decomposedScopes,
     current.graph,
+    current.journal,
     contentSource,
   );
 
@@ -1081,7 +1341,7 @@ export function splitItemDecomposition(
 
 /** The inputs of `resolveSessionItem`. */
 export interface ResolveItemArgs {
-  /** The session, mapped forward to current spellings (review-state.ts). */
+  /** The session, as stored — canonical references (src/core/review.ts). */
   readonly session: ReviewSession;
   /** The id of an item of `session.items` — caller-resolved and unblocked
    * (SPEC 10.7: resolving a blocked item is refused before this runs). */
@@ -1207,22 +1467,28 @@ export function scopeFilePath(identity: string): string {
  * ranks by document order — here, in 10.6, and in 10.7"): among items tied
  * on every earlier key, those with present scope nodes come first, in
  * document order; those with absent scope nodes follow, ordered by
- * scope-node identity, then by item id. `positionOf` maps a present scope
- * identity to its document position (undefined = absent, SPEC 10.4).
+ * scope-node identity (the derived current spelling, SPEC 10.4: ordering
+ * compares scope nodes under their current identities), then by item id.
+ * `spellingOf` maps an item to its scope's derived current spelling;
+ * `positionOf` maps a present spelling to its document position
+ * (undefined = absent, SPEC 10.4).
  */
 export function compareByDocumentOrder(
   a: ReviewItem,
   b: ReviewItem,
+  spellingOf: (item: ReviewItem) => string,
   positionOf: (identity: string) => number | undefined,
 ): number {
-  const aPosition = positionOf(a.scope);
-  const bPosition = positionOf(b.scope);
+  const aSpelling = spellingOf(a);
+  const bSpelling = spellingOf(b);
+  const aPosition = positionOf(aSpelling);
+  const bPosition = positionOf(bSpelling);
   if (aPosition !== undefined && bPosition !== undefined) {
     return aPosition - bPosition;
   }
   if (aPosition !== undefined) return -1;
   if (bPosition !== undefined) return 1;
-  const byIdentity = compareBytes(a.scope, b.scope);
+  const byIdentity = compareBytes(aSpelling, bSpelling);
   if (byIdentity !== 0) return byIdentity;
   return compareBytes(a.id, b.id);
 }
@@ -1237,11 +1503,25 @@ function nodePositions(graph: WorkspaceGraph): ReadonlyMap<string, number> {
   return positions;
 }
 
+/** Per item, its scope's derived current spelling (SPEC 10.4: ordering
+ * compares scope nodes under their current identities). */
+function scopeSpellings(
+  items: readonly ReviewItem[],
+  journal: Journal,
+): (item: ReviewItem) => string {
+  const spellings = new Map<ReviewItem, string>();
+  for (const item of items) {
+    spellings.set(item, spellingOfReference(journal, item.scope));
+  }
+  return (item): string => spellings.get(item) as string;
+}
+
 /**
  * SPEC 10.5: the total item order of a `path-blocks` session, computed
- * over current identities and presence (SPEC 10.4): requirement-scoped
- * items first, by scope-node depth (ID segment count, roots 0) deepest
- * first, then kind (`subtree-coherence`, `metadata-consistency`,
+ * over current identities and presence (SPEC 10.4 — stored references
+ * resolved to their derived current spellings): requirement-scoped items
+ * first, by scope-node depth (ID segment count, roots 0) deepest first,
+ * then kind (`subtree-coherence`, `metadata-consistency`,
  * `dependency-consistency`, `parent-consistency`), then scope-node file
  * path (bytes), then document order (present scopes first, absent ones by
  * identity then item id); `code-impact` items follow, sorted by
@@ -1251,23 +1531,31 @@ function nodePositions(graph: WorkspaceGraph): ReadonlyMap<string, number> {
 export function sortItemsPathBlocks(
   items: readonly ReviewItem[],
   graph: WorkspaceGraph,
+  journal: Journal,
 ): ReviewItem[] {
   const positions = nodePositions(graph);
   const positionOf = (identity: string): number | undefined =>
     positions.get(identity);
+  const spellingOf = scopeSpellings(items, journal);
   return [...items].sort((a, b) => {
     const aCode = a.kind === "code-impact";
     const bCode = b.kind === "code-impact";
     if (aCode !== bCode) return aCode ? 1 : -1;
-    if (aCode && bCode) return compareBytes(a.scope, b.scope);
+    if (aCode && bCode) {
+      const bySpelling = compareBytes(spellingOf(a), spellingOf(b));
+      return bySpelling !== 0 ? bySpelling : compareBytes(a.id, b.id);
+    }
     // SPEC 10.5: depth deepest first.
-    const byDepth = scopeDepth(b.scope) - scopeDepth(a.scope);
+    const byDepth = scopeDepth(spellingOf(b)) - scopeDepth(spellingOf(a));
     if (byDepth !== 0) return byDepth;
     const byKind = KIND_RANK[a.kind] - KIND_RANK[b.kind];
     if (byKind !== 0) return byKind;
-    const byPath = compareBytes(scopeFilePath(a.scope), scopeFilePath(b.scope));
+    const byPath = compareBytes(
+      scopeFilePath(spellingOf(a)),
+      scopeFilePath(spellingOf(b)),
+    );
     if (byPath !== 0) return byPath;
-    return compareByDocumentOrder(a, b, positionOf);
+    return compareByDocumentOrder(a, b, spellingOf, positionOf);
   });
 }
 
@@ -1288,14 +1576,19 @@ export function sortItemsPathBlocks(
 export function sortItemsByFileThenDocument(
   items: readonly ReviewItem[],
   graph: WorkspaceGraph,
+  journal: Journal,
 ): ReviewItem[] {
   const positions = nodePositions(graph);
   const positionOf = (identity: string): number | undefined =>
     positions.get(identity);
+  const spellingOf = scopeSpellings(items, journal);
   return [...items].sort((a, b) => {
-    const byPath = compareBytes(scopeFilePath(a.scope), scopeFilePath(b.scope));
+    const byPath = compareBytes(
+      scopeFilePath(spellingOf(a)),
+      scopeFilePath(spellingOf(b)),
+    );
     if (byPath !== 0) return byPath;
-    const byDocument = compareByDocumentOrder(a, b, positionOf);
+    const byDocument = compareByDocumentOrder(a, b, spellingOf, positionOf);
     if (byDocument !== 0) return byDocument;
     return compareBytes(a.id, b.id);
   });

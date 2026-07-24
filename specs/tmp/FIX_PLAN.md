@@ -106,65 +106,43 @@ parser splitting at the first `:`, rejecting anything not of that exact form). `
 and `Journal.mapForward` take optional prefix-length/start-position bounds, so no per-node prefix or
 suffix `Journal` is ever built on hot paths.
 
-## T42 — Store and match recorded review nodes as canonical identities
+Canonical storage and matching (was T42, completed at the commit carrying this note): every stored
+node reference — item `scope`, `context[]`, `origin[]`, the keys of `baseline.nodes`/`current.nodes`
+and `baselineTexts`/`derivedTexts`, each decomposition's `scope` — is the canonical key encoding;
+`journalLength` was kept as the write-moment bound (parse rejects any reference that does not parse
+as `<position>:<identity>` with non-empty identity, or whose position exceeds `journalLength`;
+mutating subcommands advance `journalLength` to the current journal entry count on every write). The
+at-most-one invariant compares canonical encodings byte-wise (`src/core/review.ts`
+`checkSessionInvariants` + `checkCanonicalReferences`). The forward-spelling rewrite is gone
+(`journalSuffixMapper`/`mapSessionIdentitiesForward`/`mapItemIdentitiesForward`/`mapRecordedState`/
+`mapTextTable` deleted; reads and mutators consume the stored session as-is). Facts T43 needs:
 
-**Satisfies:** SPEC 10.4 (canonical comparison for item matching, decomposition matching, `split`);
-SPEC 10.1/10.5 (the at-most-one invariant judged per 10.4, so violations can only enter by external
-modification); SPEC 14.21 (corruption denotes external damage — a pure rename must not manufacture
-it). This task makes the reproduction's step 5 stop corrupting the session; presence/invalidation
-semantics follow in T43.
-
-Scope of change (product only):
-
-1. **Stored form** (`/home/user/sdg-claude/src/core/review.ts`): every stored node reference
-   becomes a canonical identity — item `scope`, `context[]`, `origin[]`, the keys of
-   `baseline.nodes`/`current.nodes` and of `baselineTexts`/`derivedTexts`, and each recorded
-   decomposition's `scope` — using the canonical key encoding above (or an equivalent explicit
-   `{identity, position}` shape; the encoding is recommended because object keys stay strings and
-   `checkKeys`-style strict parsing stays simple). Keep the top-level keys `creationParameters`,
-   `items`, and per-item `id`, `status`, `blockedBy` exactly as today (frozen staging adapter,
-   see design notes). `journalLength` loses its identity-mapping role; keep it recorded as the
-   write-moment bound (parse may require each stored position `<= journalLength`) or drop it —
-   Engineer's choice; note the choice in the final report. Update the module-header identity
-   policy, deleting the false "byte-identical spellings" premise. Parsing stays strict and total:
-   a key/reference that does not parse as the canonical encoding is a session-invariant violation
-   (corrupt, 14.21).
-2. **Parse-time invariants** (`checkSessionInvariants`): the at-most-one check compares
-   `(kind, canonical scope)` — byte-wise over the *canonical encodings*, which now IS canonical
-   comparison, journal-free. Duplicate-id, blockedBy, and cycle checks unchanged.
-3. **Load/persist** (`/home/user/sdg-claude/src/core/review-state.ts`,
-   `/home/user/sdg-claude/src/cli/commands/review-mutate.ts`, `review-session.ts`, `review.ts`
-   (create), `/home/user/sdg-claude/src/workspace/reviews.ts`): mutating subcommands persist
-   canonical references — the forward-spelling rewrite (`journalSuffixMapper` +
-   `mapSessionIdentitiesForward` as a persistence step) disappears; rework or remove those
-   functions. Reads derive each node's current spelling via `currentSpellingOf` for presentation
-   and graph lookups. Reads still never write the session file (SPEC 10.4, 13.5).
-4. **Matching and derivation** (`/home/user/sdg-claude/src/core/review-derive.ts`): key
-   `deriveSessionItems`, `currentContextSets`, `expandDecompositions`, and
-   `splitItemDecomposition` by `(kind, canonical scope)`; compare context sets canonically.
-   Canonicalize `GeneratedNode`s centrally at the derivation seam (generator files
-   `path-blocks.ts`, `audit.ts`, `coverage-session.ts` need no change): a node identified by a
-   current-graph spelling canonicalizes via the full current journal; a node that exists only in
-   the recorded baseline (`baselineIdentity !== null`, absent currently) canonicalizes as
-   `canonicalAt(currentJournal, baselineJournalLength, baselineIdentity)` where
-   `baselineJournalLength = current entries − replay entries` — NOT by canonicalizing its
-   forward-mapped spelling against the full journal, which would misattribute a spelling recaptured
-   by a replay entry. Decomposition expansion and `split` resolve a stored canonical scope to a
-   current graph node for child enumeration (in this task, spelling lookup is acceptable; T43
-   tightens it to resolution).
-5. **Presentation** (`review-session.ts` payloads and human rendering, status rows, item ordering):
-   every surfaced node uses its derived current spelling. Required invariant: presented JSON and
-   human output are byte-identical to today's whenever no two recorded nodes of one presented
-   object share a spelling (every existing test's scenario). Where two canonically distinct nodes
-   of one `baseline`/`current` state share a forward-mapped spelling (reachable only in recapture
-   scenarios), disambiguate the *object keys* deterministically (e.g. append `@<position>` to the
-   colliding keys, or key those states canonically) — never drop a recorded node (SPEC 10.4 "reads
-   present every recorded node"; 10.2 "reads report both fields as recorded"). Scalar `node` fields
-   (scope/context/origin entries) always carry the plain forward-mapped spelling; they may repeat.
-
-Verify: full suite green (485/485), typecheck, format. Manually run the reproduction (steps 1–5
-above): step 5 must exit 0 and every subsequent `review status|next|show|export s`, `review list`,
-and `check` must exit 0 with both items present as distinct items. Commit and push.
+- The codec seam lives in `src/core/review-state.ts`: `canonicalKeyOfCurrent`, `parseReference`,
+  `spellingOfReference`, and `presentRecordedState` (presented `baseline`/`current` keep spelling
+  keys unless two canonically distinct recorded nodes of that one state share a forward-mapped
+  spelling; then the whole state keeps its stored canonical keys — deterministic, nothing dropped).
+  `ReviewStateInputs` gained `journal`; the old `scopeSubtreeIdentities` is now
+  `scopeSubtreeReferences` (canonical keys out, full-journal canonicalization of graph members);
+  `recordedNodeState` still judges presence by spelling lookup — exactly what T43 item 1 replaces
+  with `resolvesCurrently` + graph lookup.
+- The generator seam is `canonicalizeGeneration` (`src/core/review-derive.ts`): generator files are
+  untouched and stay spelling-space; the seam canonicalizes items, blocker refs (resolved through
+  the generated items, current-graph-first on spelling collisions), the wrapped
+  `DecompositionContentSource` (canonical refs in, decoded to spellings for the inner builder), and
+  the per-location impact-target map. A deleted baseline node canonicalizes as
+  `canonicalAt(journal, baselineJournalLength, baselineIdentity)`. `CurrentDerivationSide` gained
+  `journal`; `BaselineDerivationSide` replaced `replay` with `journal` + `journalLength` (the
+  baseline prefix length), and `computeBaselineRecordedState` keys subtree members via
+  `canonicalAt` — T43 item 2's "align its keys" is done; confirm no spelling lookup remains.
+- Ordering (`sortItemsPathBlocks`, `sortItemsByFileThenDocument`, `compareByDocumentOrder`) takes
+  the journal and ranks by each scope's derived current spelling; the absent tie-break is spelling
+  bytes then item id — T43 item 5 re-judges *presence* (document position only for a canonically
+  resolving scope), not the key shape.
+- Verified: full suite 485/485 green, typecheck, format; the panel reproduction (steps 1–5) all
+  exit 0, every subsequent read and `check` exit 0 with both items distinct and no status lost —
+  plus a second mutating subcommand and re-read staying clean. Presence/invalidation are still
+  spelling-judged (the reproduction's deletion item currently presents `present: true` under the
+  recaptured spelling) — that is T43's work, not a regression.
 
 ## T43 — Judge presence, state, and invalidation canonically
 
