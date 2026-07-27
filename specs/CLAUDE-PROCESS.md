@@ -99,7 +99,7 @@ PROCESS.md §Asking Developer, implemented as:
 - **No pending ASK** (process active or idle) → spawn a fresh Liaison fork to interpret the message. Liaison returns one of:
   - `OUTCOME: REPLY — …` with a `REPLY:` block — the Orchestrator posts it verbatim (status questions, "what is this project?", small talk);
   - `OUTCOME: ANSWER — directive: <instruction>` — a mechanical directive the Orchestrator obeys (e.g. "treat this message as a new seed, run Phase 1", "stop current work", "resume");
-  - `OUTCOME: ANSWER — directive: one-off: <task>` — the Orchestrator spawns sdg-specialist (mission `specialist/one-off.md`) with the task piped verbatim, and relays the Specialist's Developer-facing report verbatim when it returns. One-offs never modify SDG-governed surfaces — a request that would is a seed, and Liaison classifies it as such instead.
+  - `OUTCOME: ANSWER — directive: one-off: <task>` — the Orchestrator spawns sdg-specialist (mission `specialist/one-off.md`) with the task piped verbatim, and relays the Specialist's Developer-facing report verbatim when it returns. One-offs never modify SDG-governed surfaces — a request that would is a seed, and Liaison classifies it as such instead. Serving a one-off never triggers phase advancement: a fresh session that opened with one relays the report and ends its turn idle (the process may be live in another session); only a session already driving the process continues it afterward. In-run one-offs are allowed but exceptional — their preferred home is a session of their own.
 - **Session start** → run Phase 0 first, then route the first message as above.
 
 ## 6. Iterative Refinement — Claude binding
@@ -207,7 +207,7 @@ Phase 0 runs at the start of **every** session. Paths: core docs in `specs/`, te
   |---|---|---|
   | Not bootstrapped | `specs/PROCESS.md`, this file, or any of the `.claude/agents/` / `.claude/prompts/` files missing | Return `not-bootstrapped`; the Orchestrator relays the audit report to a Liaison episode, and Liaison informs Developer; halt |
   | Refinement reverted | Any `specs/tmp/*-PROBLEMS.md` exists | The phase for the most upstream problems file (jump table above) |
-  | Refinement in flight | `specs/tmp/REVIEW.md` exists (its header names the target) | The refinement phase for that target — patch → 3, SPEC.md → 4, TEST-SPEC.md → 6, CERTIFICATIONS.md → 7; the stale REVIEW.md is deleted and a fresh review starts the resumed iteration |
+  | Refinement in flight | `specs/tmp/REVIEW.md` exists (its header names the target) | The refinement phase for that target — patch → 3, SPEC.md → 4, TEST-SPEC.md → 6, CERTIFICATIONS.md → 7; the resumed iteration's fresh review overwrites the file (never delete it — another session's live iteration may own it) |
   | Active patch | A patch in `specs/patches/` has a `Stage:` other than Complete | By stage — Proposed → 3; Accepted → IP: 4, Bug: 6, 7, or 9 per the route stated in the patch (an Accepted bug routed to 9 with no `FIX_PLAN.md` lost Phase 3's closing step — resume Phase 3); Applied → 6 (through 5 if `IMPLEMENTATION.md`/`TEST-SPEC.md` are missing); Tests Specified → 9 (through 8 if scaffolding is missing); Tested → 10; Implemented → 11 |
   | Ready for triage | `specs/tmp/SEED.md` exists | Phase 2 |
   | Initial build in flight | No seed, no active patch, initial build incomplete | No `SPEC.md` → Phase 1; `SPEC.md` but no `TEST-SPEC.md` → 5; `TEST-SPEC.md` but no `CERTIFICATIONS.md` → 7; harness incomplete → 9 (through 8 if needed); harness green but product not → 10 |
