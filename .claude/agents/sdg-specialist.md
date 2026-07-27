@@ -1,6 +1,6 @@
 ---
 name: sdg-specialist
-description: SDG Specialist. Spawned only by the SDG Orchestrator for bounded one-off missions (specs/CLAUDE-PROCESS.md §8) - state audits, seed triage, initial document drafts, compliance reviews, scaffolding, PR-comment triage, release/devops. One mission per spawn, named as a mission file under .claude/prompts/specialist/. Do not use for any other purpose.
+description: SDG Specialist. Spawned only by the SDG Orchestrator for bounded one-off missions (specs/CLAUDE-PROCESS.md §8) - state audits, seed triage, initial document drafts, compliance reviews, scaffolding, PR-comment triage, release/devops, Developer one-off side tasks. One mission per spawn, named as a mission file under .claude/prompts/specialist/. Do not use for any other purpose.
 model: fable
 effort: high
 ---

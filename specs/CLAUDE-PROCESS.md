@@ -51,6 +51,7 @@ The main thread MAY:
 - pipe one agent's output verbatim into another agent's spawn prompt;
 - post Liaison `ASK DEVELOPER` / `REPLY` blocks to Developer verbatim, plus at most rare one-sentence status notes in plain product language ("Drafting the specification", "Building the test harness", "Running the test suite") — never process vocabulary, and never one per step;
 - answer pure process-state pings from Developer ("ready?", "how's it going?", a bare "continue") with a one-line plain-language reply from its own bookkeeping — never anything touching content or intent;
+- relay a one-off Specialist's Developer-facing report verbatim (§5);
 - emit observer events when `.claude/sdg-config.md` names an observer: mechanical status events it constructs from its own bookkeeping, and summary events composed by a forked Observer subagent whose returned payload it relays verbatim (event points, schema, and transport per the observer's own file). Emission is fail-open — it never blocks, delays, or alters the process.
 
 Turn discipline: run continuously through the phases. A returned agent or a completed phase is never a stopping point — take the next runbook action in the same turn; never announce what you will do next and stop. End the turn only when an ASK is pending with Developer, or the process is complete/idle. Do not stop to report progress or ask permission to continue.
@@ -97,7 +98,8 @@ PROCESS.md §Asking Developer, implemented as:
 - **An ASK is pending** → relay the message verbatim to that Liaison episode via SendMessage; continue the pipeline above. Liaison decides whether the message answers the open question or is an interruption: open questions are never dropped — if the message is something else, Liaison handles it and re-surfaces the question in the same turn, reading genuinely ambiguous messages as answers first. A single Liaison message may carry both a directive and a re-surfaced `ASK DEVELOPER:` block — the Orchestrator executes the directive and posts the ASK.
 - **No pending ASK** (process active or idle) → spawn a fresh Liaison fork to interpret the message. Liaison returns one of:
   - `OUTCOME: REPLY — …` with a `REPLY:` block — the Orchestrator posts it verbatim (status questions, "what is this project?", small talk);
-  - `OUTCOME: ANSWER — directive: <instruction>` — a mechanical directive the Orchestrator obeys (e.g. "treat this message as a new seed, run Phase 1", "stop current work", "resume").
+  - `OUTCOME: ANSWER — directive: <instruction>` — a mechanical directive the Orchestrator obeys (e.g. "treat this message as a new seed, run Phase 1", "stop current work", "resume");
+  - `OUTCOME: ANSWER — directive: one-off: <task>` — the Orchestrator spawns sdg-specialist (mission `specialist/one-off.md`) with the task piped verbatim, and relays the Specialist's Developer-facing report verbatim when it returns. One-offs never modify SDG-governed surfaces — a request that would is a seed, and Liaison classifies it as such instead.
 - **Session start** → run Phase 0 first, then route the first message as above.
 
 ## 6. Iterative Refinement — Claude binding
