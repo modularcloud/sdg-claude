@@ -14,14 +14,16 @@ const P = args.phase
 const MODULES = args.modules || []
 const MISSION = (path, extra) => `Mission file: .claude/prompts/${path}\nParameters:\n- phase: ${P}${extra ? '\n' + extra : ''}`
 
-const COMMON = { problem: { type: 'string' }, question: { type: 'string' } }
-const UNITS = { type: 'object', required: ['units'], properties: { ...COMMON, units: { type: 'array', items: { type: 'object', required: ['id', 'title', 'brief', 'files', 'sharedCore'], properties: { id: { type: 'string' }, title: { type: 'string' }, brief: { type: 'string' }, files: { type: 'array', items: { type: 'string' } }, sharedCore: { type: 'boolean' } } } } } }
-const DONE = { type: 'object', required: ['done', 'summary'], properties: { ...COMMON, done: { type: 'boolean' }, summary: { type: 'string' } } }
-const PANEL = { type: 'object', required: ['compliant'], properties: { ...COMMON, compliant: { type: 'boolean' }, gaps: { type: 'array', items: { type: 'object', required: ['citation', 'shortfall'], properties: { citation: { type: 'string' }, shortfall: { type: 'string' } } } } } }
-const VERIFY = { type: 'object', required: ['status'], properties: { ...COMMON, status: { enum: ['green', 'red', 'pending'] }, failures: { type: 'array', items: { type: 'string' } } } }
-const TRIAGE = { type: 'object', required: ['clean'], properties: { ...COMMON, clean: { type: 'boolean' }, accepted: { type: 'array', items: { type: 'string' } } } }
+// Engineers never ask Developer (PROCESS.md), so only Specialist returns may carry a question.
+const PROBLEM = { problem: { type: 'string' } }
+const QUESTION = { question: { type: 'string' } }
+const UNITS = { type: 'object', required: ['units'], properties: { ...PROBLEM, units: { type: 'array', items: { type: 'object', required: ['id', 'title', 'brief', 'files', 'sharedCore'], properties: { id: { type: 'string' }, title: { type: 'string' }, brief: { type: 'string' }, files: { type: 'array', items: { type: 'string' } }, sharedCore: { type: 'boolean' } } } } } }
+const DONE = { type: 'object', required: ['done', 'summary'], properties: { ...PROBLEM, done: { type: 'boolean' }, summary: { type: 'string' } } }
+const VERIFY = { type: 'object', required: ['status'], properties: { ...PROBLEM, status: { type: 'string', enum: ['green', 'red', 'pending'] }, failures: { type: 'array', items: { type: 'string' } } } }
+const PANEL = { type: 'object', required: ['compliant'], properties: { ...PROBLEM, ...QUESTION, compliant: { type: 'boolean' }, gaps: { type: 'array', items: { type: 'object', required: ['citation', 'shortfall'], properties: { citation: { type: 'string' }, shortfall: { type: 'string' } } } } } }
+const TRIAGE = { type: 'object', required: ['clean'], properties: { ...PROBLEM, ...QUESTION, clean: { type: 'boolean' }, accepted: { type: 'array', items: { type: 'string' } } } }
 
-// PROBLEM/QUESTION exits ride on the structured returns; the Orchestrator handles them outside.
+// PROBLEM/QUESTION exits ride on the structured returns; the Orchestrator handles them outside the run.
 const bail = (results) => {
   for (const r of results.filter(Boolean)) {
     if (r.problem) return { status: 'problem', file: r.problem }
@@ -43,48 +45,62 @@ phase('Implement')
 const implPrompt = (u) => MISSION('engineer/implement.md', `- unit: ${u.id} — ${u.title}\n- brief: ${u.brief}\n- files you own: ${u.files.join(', ')}`)
 for (const u of dec.units.filter(u => u.sharedCore)) {
   const r = await agent(implPrompt(u), { agentType: 'sdg-engineer', schema: DONE, phase: 'Implement', label: `impl:${u.id}` })
-  const x = bail([r].filter(Boolean)); if (x) return x
+  const x = bail([r]); if (x) return x
 }
 const par = dec.units.filter(u => !u.sharedCore)
 if (par.length) {
   const rs = await parallel(par.map(u => () => agent(implPrompt(u) + '\n- you are in an isolated worktree: commit to your current branch and do NOT push; integration merges you', { agentType: 'sdg-engineer', schema: DONE, isolation: 'worktree', phase: 'Implement', label: `impl:${u.id}` })))
   const x = bail(rs); if (x) return x
   const ri = await agent(MISSION('engineer/integrate.md', `- merge the unit branches from the ${par.length} parallel worktrees just completed`), { agentType: 'sdg-engineer', schema: DONE, phase: 'Implement', label: 'integrate' })
-  const x2 = bail([ri].filter(Boolean)); if (x2) return x2
+  const x2 = bail([ri]); if (x2) return x2
 }
 
-// ---------- Converge, then Review; exit only when the completion standard holds AND review is clean
+// ---------- Converge, then Review: exit only when the completion standard holds AND review is clean
+const PANELS = [
+  ...MODULES.map(m => ({ scope: m, label: `panel:${m.split('/').pop()}` })),
+  { scope: 'the core documents', label: 'panel:core' },
+]
+const panel = (p) => agent(`Mission file: .claude/prompts/specialist/compliance-review.md\nParameters:\n- phase: ${P}\n- scope: ${p.scope}`, { agentType: 'sdg-specialist', schema: PANEL, phase: 'Converge', label: p.label })
+const verify = (ciOnly) => agent(MISSION('engineer/verify.md', ciOnly ? '- CI-only: nothing changed since your last local run; report CI status alone' : ''), { agentType: 'sdg-engineer', schema: VERIFY, phase: 'Converge', label: ciOnly ? 'verify:ci' : 'verify' })
+const fix = (detail, ph) => agent(MISSION('engineer/fix.md', detail), { agentType: 'sdg-engineer', schema: DONE, phase: ph, label: ph === 'Review' ? 'fix:review' : 'fix' })
+
 let rounds = 0
 while (true) {
   if (++rounds > 30) return { status: 'stalled', evidence: `no convergence after ${rounds - 1} rounds` }
-  const checks = await parallel([
-    ...MODULES.map(m => () => agent(`Mission file: .claude/prompts/specialist/compliance-review.md\nParameters:\n- phase: ${P}\n- scope: ${m}`, { agentType: 'sdg-specialist', schema: PANEL, phase: 'Converge', label: `panel:${m.split('/').pop()}` })),
-    () => agent(`Mission file: .claude/prompts/specialist/compliance-review.md\nParameters:\n- phase: ${P}\n- scope: the core documents`, { agentType: 'sdg-specialist', schema: PANEL, phase: 'Converge', label: 'panel:core' }),
-    () => agent(MISSION('engineer/verify.md'), { agentType: 'sdg-engineer', schema: VERIFY, phase: 'Converge', label: 'verify' }),
-  ])
-  const live = checks.filter(Boolean)
-  const x = bail(live); if (x) return x
-  const verify = live.find(r => r.status)
-  const gaps = live.flatMap(r => r.gaps || [])
-  if (verify && verify.status === 'red') gaps.push(...(verify.failures || []).map(f => ({ citation: 'failing test/check', shortfall: f })))
+  const results = await parallel([...PANELS.map(p => () => panel(p)), () => verify(false)])
+  { const x = bail(results); if (x) return x }
+  const panels = results.slice(0, PANELS.length)
+  let v = results[PANELS.length]
+  // Waiting on CI never re-runs the panels: re-check CI alone (a dead verifier re-runs in full).
+  for (let i = 0; i < 3 && (!v || v.status === 'pending'); i++) {
+    v = await verify(Boolean(v))
+    const x = bail([v]); if (x) return x
+  }
+  if (!v || v.status === 'pending') return { status: 'stalled', evidence: 'verification never settled (CI pending, or the verifier kept failing)' }
 
-  if (!gaps.length && verify && verify.status === 'green') {
-    // Completion standard holds — review gate.
+  const gaps = panels.flatMap(p => (p && p.gaps) || [])
+  if (v.status === 'red') {
+    const failures = v.failures && v.failures.length ? v.failures : ['verification red without itemized failures: investigate']
+    gaps.push(...failures.map(f => ({ citation: 'failing test/check', shortfall: f })))
+  }
+
+  if (!gaps.length) {
+    // The standard holds only on complete, affirmative verdicts: a dead or non-committal panelist establishes nothing.
+    if (!panels.every(p => p && p.compliant)) { log(`round ${rounds}: incomplete compliance verdicts, re-auditing`); continue }
     const t = await agent(`Mission file: .claude/prompts/specialist/code-review-triage.md\nParameters:\n- phase: ${P}\n- stage flip when clean: ${args.stageFlip || 'none'}`, { agentType: 'sdg-specialist', schema: TRIAGE, phase: 'Review', label: 'triage' })
     if (!t) return { status: 'stalled', evidence: 'triage agent died' }
-    const xt = bail([t]); if (xt) return xt
+    { const x = bail([t]); if (x) return x }
     if (t.clean) return { status: 'success' }
-    for (const c of t.accepted) {
-      const r = await agent(MISSION('engineer/fix.md', `- accepted review comment (reply on its thread and resolve it when done):\n${c}`), { agentType: 'sdg-engineer', schema: DONE, phase: 'Review', label: 'fix:review' })
-      const xr = bail([r].filter(Boolean)); if (xr) return xr
+    for (const c of t.accepted || []) {
+      const r = await fix(`- accepted review comment (reply on its thread and resolve it when done):\n${c}`, 'Review')
+      const x = bail([r]); if (x) return x
     }
     continue // re-establish the standard after review fixes
   }
 
-  if (!gaps.length) { log(`round ${rounds}: checks ${verify ? verify.status : 'unknown'} — re-checking`); continue }
   log(`round ${rounds}: ${gaps.length} gaps`)
   for (const g of gaps) {
-    const r = await agent(MISSION('engineer/fix.md', `- requirement: ${g.citation}\n- shortfall: ${g.shortfall}`), { agentType: 'sdg-engineer', schema: DONE, phase: 'Converge', label: 'fix' })
-    const xr = bail([r].filter(Boolean)); if (xr) return xr
+    const r = await fix(`- requirement: ${g.citation}\n- shortfall: ${g.shortfall}`, 'Converge')
+    const x = bail([r]); if (x) return x
   }
 }

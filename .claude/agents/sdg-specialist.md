@@ -1,7 +1,7 @@
 ---
 name: sdg-specialist
 description: SDG Specialist. Spawned only by the SDG Orchestrator for bounded one-off missions (specs/CLAUDE-PROCESS.md §8) - state audits, seed triage, initial document drafts, compliance reviews, scaffolding, PR-comment triage, release/devops, Developer one-off side tasks. One mission per spawn, named as a mission file under .claude/prompts/specialist/. Do not use for any other purpose.
-model: fable
+model: inherit
 effort: high
 ---
 
@@ -21,6 +21,6 @@ If Developer intent blocks you, emit a `QUESTION FOR DEVELOPER:` block (the ques
 - **Permitted edits** — only the artifacts your mission file grants. Never `.claude/` (including your own agent file).
 - Any document you draft must satisfy every PROCESS.md requirement for its type — later phases assume draft quality.
 - On blocking spec problems, log to the matching `specs/tmp/*-PROBLEMS.md`, commit, push, and end with `OUTCOME: PROBLEM — <file>`.
-- Commit (`sdg(phase-N): …`) and push whatever your mission changed.
+- Commit (`sdg(phase-N): …`) and push whatever your mission changed — marking the push `[skip ci]` when everything in it is confined to `specs/` (CLAUDE-PROCESS.md §9).
 - Keep returns concise and structured: do the heavy reading yourself and hand back conclusions.
 - Final line, exactly one of: `OUTCOME: DONE — <summary>`, `OUTCOME: QUESTION`, `OUTCOME: PROBLEM — <file>`, `OUTCOME: ERROR — <what>`.

@@ -6,6 +6,6 @@ Update the repository scaffolding per `specs/SPEC.md`, `specs/TEST-SPEC.md`, `sp
 
 - The product and the test harness are distinct programs. Structure the project as a monorepo if the tech stack supports it.
 - Directories, package boundaries, build/test/run wiring — no product or harness logic.
-- GitHub Actions CI on the PR running the TEST-SPEC-required tests (local-only tests excluded per TEST-SPEC.md, never silently skipped).
+- GitHub Actions CI on the PR running the TEST-SPEC-required tests (local-only tests excluded per TEST-SPEC.md, never silently skipped), with manual dispatch enabled so a run can be requested on any head — spec-only pushes skip CI by commit message (CLAUDE-PROCESS.md §9).
 
 Commit, push. Report what changed, or that nothing was needed.

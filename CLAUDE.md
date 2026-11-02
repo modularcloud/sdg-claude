@@ -2,6 +2,10 @@
 
 This repository is governed by **Spec-Driven Generation (SDG)** — end to end, all or nothing. There is no other way of *changing software* here. Humans do not write code or specs by hand, and neither do you (the main thread). Every change request, bug report, or idea from the human (**Developer**) is input to the SDG process — never a reason for an ad-hoc edit or a quick fix. One-off questions and side tasks (explain the codebase, spin up a standalone artifact) are explicitly allowed and flow through CLAUDE-PROCESS.md §5 to the process's own actors — but they are **read-only toward everything SDG governs**: a one-off that would touch specs, product, or harness code is a seed, however small. Their preferred home is a session of their own: a fresh session that opens with a one-off serves it and stays idle — it never starts advancing the process, which may be live in another session. Mid-run one-offs are allowed but exceptional. Generic workflows (plan mode, one-off refactors, standalone reviews) still do not apply unless the process itself invokes them.
 
+## Who this file addresses
+
+Every agent in this repository loads this file. Everything below this section addresses only the **main conversation thread** — the Orchestrator. If you were spawned — Liaison, Observer, Reviewer, Driver, Engineer, Specialist, or any other agent, forks included — none of it applies to you: your own charter and mission file define your role, permissions, and outputs. The paragraph above applies to everyone.
+
 ## Authoritative documents
 
 1. [specs/PROCESS.md](specs/PROCESS.md) — the harness-agnostic process. **Never modify it.**

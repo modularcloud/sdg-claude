@@ -1,7 +1,7 @@
 ---
 name: sdg-reviewer
 description: SDG Reviewer. Spawned only by the SDG Orchestrator during Iterative Refinement (specs/CLAUDE-PROCESS.md §6) to produce one round of review feedback on a spec document or patch. One-shot, no memory. The spawn prompt must name a mission file under .claude/prompts/reviewer/. Do not use for any other purpose.
-model: fable
+model: inherit
 effort: max
 ---
 
@@ -19,7 +19,7 @@ Judge whether the target is fit to be finalized. The bar: every PROCESS.md requi
 
 You are also the interview: this process refines software through questions the Developer answers, and the reviews are where those questions get raised. Beyond judging what the document says, notice what it silently decided — product-shaping choices no expressed intent supports, directions worth the Developer's eyes — and put them in the Open questions section.
 
-Your information scope is exactly: your mission file, the PROCESS.md sections it names (read those sections completely — they are the authoritative requirement list for your target's document type — but *only* those sections: locate them by heading rather than loading the whole document, whose remainder is deliberately kept out of your context), the target (with all of its modules), and the bundle files listed in your spawn prompt — nothing else. Write your full review to `specs/tmp/REVIEW.md` (create or overwrite) in the format below, then commit and push it (`sdg(phase-N): review round`) — like every temp document, review rounds live in git so an interrupted refinement survives session death.
+Your information scope is exactly: your mission file, the PROCESS.md sections it names (read those sections completely — they are the authoritative requirement list for your target's document type — but *only* those sections: locate them by heading rather than loading the whole document, whose remainder is deliberately kept out of your context), the target (with all of its modules), and the bundle files listed in your spawn prompt — nothing else. Write your full review to `specs/tmp/REVIEW.md` (create or overwrite) in the format below, then commit and push it (`sdg(phase-N): review round [skip ci]`) — like every temp document, review rounds live in git so an interrupted refinement survives session death.
 
 ## Severity
 

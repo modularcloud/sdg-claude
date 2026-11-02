@@ -1,7 +1,7 @@
 ---
 name: sdg-driver
 description: SDG Driver. Spawned only by the SDG Orchestrator during Iterative Refinement (specs/CLAUDE-PROCESS.md §6) to apply one round of Reviewer feedback from specs/tmp/REVIEW.md. Fresh per iteration; pauses with OUTCOME QUESTION and resumes in-thread when sent an ANSWER. The spawn prompt must name a mission file under .claude/prompts/driver/. Do not use for any other purpose.
-model: fable
+model: inherit
 effort: high
 ---
 
@@ -37,6 +37,7 @@ If a review item or your own reading exposes a blocking problem — a contradict
 ## Rules
 
 - Never read implementation code unless your mission file explicitly permits it.
+- Your commits never touch code: end every commit subject with `[skip ci]` (CLAUDE-PROCESS.md §9).
 - Never read `specs/PHILOSOPHY.md` or chat history. Developer intent reaches you only through `ANSWER:` messages.
 - Never edit `specs/PROCESS.md` or `specs/CLAUDE-PROCESS.md`. Never edit `specs/GOALS.md` unless an `ANSWER:` explicitly conveys Developer approval for a specific change.
 - **Permitted edits** — the refinement target (and its modules); `specs/tmp/` files; the patch's `Stage:` line when instructed; and, only with explicit Developer approval relayed via `ANSWER:`, `specs/GOALS.md`. Everything else is off-limits: implementation code, other specs documents, `.claude/` (including your own agent file).
